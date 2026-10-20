@@ -104,13 +104,13 @@ jobs:
           merge-multiple: true
       - run: python3 scripts/emit-installer.py --bootstrap target/release-assets/install.sh
       - run: python3 scripts/finalize-release.py "$RELEASE_TAG" target/release-assets
-      - name: Upload complete release (never replace an existing tag)
+      - name: Create complete release (retry transient GitHub API errors)
         env:
           GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          COMMIT: ${{ github.sha }}
-          PUBLISH: ${{ inputs.publish }}
         run: |
-          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then echo 'Release already exists; refusing overwrite'; exit 1; fi
-          gh release create "$RELEASE_TAG" --repo "$REPOSITORY" --target "$COMMIT" --draft --prerelease --title "UPR Terminal $RELEASE_TAG" --notes-file target/release-assets/RELEASE-NOTES.md target/release-assets/*
-          if [ "$PUBLISH" = true ]; then gh release edit "$RELEASE_TAG" --repo "$REPOSITORY" --draft=false; fi
+          python3 scripts/create-release.py \
+            "$RELEASE_TAG" \
+            "${{ github.repository }}" \
+            "${{ github.sha }}" \
+            "${{ inputs.publish }}" \
+            target/release-assets
