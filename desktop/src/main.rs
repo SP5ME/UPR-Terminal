@@ -18,7 +18,7 @@ use std::{
 };
 use tauri::{
     Manager,
-    menu::{CheckMenuItem, Menu, MenuItem, Submenu},
+    menu::{CheckMenuItem, Menu, MenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
     webview::NewWindowResponse,
 };
@@ -329,10 +329,7 @@ fn setup(app: &mut tauri::App, state: &Arc<Desktop>) -> Result<(), Box<dyn std::
         &quit,
     ];
     let tray_menu = Menu::with_items(app, &items)?;
-    let submenu = Submenu::with_items(app, "Stacja", true, &items)?;
-    let menu = Menu::with_items(app, &[&submenu])?;
     drop(checks);
-    app.set_menu(menu)?;
     let tray = TrayIconBuilder::with_id("station")
         .icon(
             app.default_window_icon()

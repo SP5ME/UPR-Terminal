@@ -40,7 +40,15 @@ try {
         if ((Get-Item -LiteralPath $resolved).PSIsContainer) { Get-ChildItem -LiteralPath $resolved -Recurse -File }
         else { Get-Item -LiteralPath $resolved }
     }
-    $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceFiles.FullName | Sort-Object Path | ForEach-Object Hash | Out-String).Replace("`r",'').Replace("`n",'')
+    $sourceManifest = foreach ($sourceFile in ($sourceFiles | Sort-Object FullName)) {
+        $relativePath = $sourceFile.FullName.Substring($projectRoot.Length + 1)
+        $fileHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceFile.FullName).Hash
+        "$fileHash  $relativePath"
+    }
+    $sourceHashBytes = [Security.Cryptography.SHA256]::Create().ComputeHash(
+        [Text.Encoding]::UTF8.GetBytes(($sourceManifest -join "`n"))
+    )
+    $sourceHash = -join ($sourceHashBytes | ForEach-Object { $_.ToString('x2') })
     Set-Content -LiteralPath (Join-Path $output 'BUILD-INFO.txt') -Value @("version=$rootVersion", "installer=$($installer.Name)", "source_sha256=$sourceHash") -Encoding utf8
     $hashes = Get-ChildItem -LiteralPath $output -Recurse -File | ForEach-Object {
         $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash

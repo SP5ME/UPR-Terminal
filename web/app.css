@@ -281,3 +281,4 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .settings-form .notification-volume-actions input[type=range]{flex:1;min-width:80px;width:100%;height:24px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;accent-color:#769954;cursor:pointer}
 .notification-volume-actions output{min-width:4ch;text-align:right;color:var(--muted);font:11px var(--mono)}.notification-volume-actions .button{flex-shrink:0;white-space:nowrap}
 @media(max-width:700px){.notification-volume-control{align-items:stretch;flex-direction:column;gap:12px}.notification-volume-actions{flex-basis:auto;width:100%}}
+.notification-table{table-layout:fixed}.notification-table th:first-child,.notification-table td:first-child{width:46%}.notification-table th:not(:first-child),.notification-table td:not(:first-child){width:18%}

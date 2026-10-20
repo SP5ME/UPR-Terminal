@@ -818,14 +818,6 @@ function organizeApplicationSettings(){
   if(!form||!web||form.dataset.applicationWebSplit==='true')return;
   web.dataset.settingsKey='local-preferences';
 
-  const notifications=node('div','form-section');
-  notifications.dataset.settingsKey='notifications';
-  notifications.innerHTML='<h3>Powiadomienia</h3><p class="section-help"></p>';
-  web.parentElement.insertBefore(notifications,web);
-
-  [...web.querySelectorAll(':scope > .settings-collapsible')].forEach(card=>{
-    if(card.querySelector('.notification-settings'))notifications.append(card);
-  });
   const application=node('div','form-section');
   application.dataset.settingsKey='application';
   application.hidden=true;
@@ -852,8 +844,8 @@ function organizeApplicationSettings(){
 function settingsTabItemsSeparated(){
   const form=document.querySelector('.settings-form');
   if(!form)return[];
-  const labels={station:['settings.station','Stacja'],interfaces:['settings.interfaces','Interfejsy TNC'],beacon:['settings.beacon','Beacon'],mailbox:['settings.mailbox','MailBox'],messages:['settings.messages','Komunikaty i komendy'],yapp:['settings.yapp','YAPP'],ax25:['settings.ax25','AX.25 i ruch'],notifications:['settings.notifications','Powiadomienia'],application:['settings.application','Aplikacja'],web:['settings.web','WWW']};
-  const order=['station','interfaces','beacon','mailbox','messages','yapp','ax25','notifications','application','web'];
+  const labels={station:['settings.station','Stacja'],interfaces:['settings.interfaces','Interfejsy TNC'],beacon:['settings.beacon','Beacon'],mailbox:['settings.mailbox','MailBox'],messages:['settings.messages','Komunikaty i komendy'],yapp:['settings.yapp','YAPP'],ax25:['settings.ax25','AX.25 i ruch'],application:['settings.application','Aplikacja'],web:['settings.web','WWW']};
+  const order=['station','interfaces','beacon','mailbox','messages','yapp','ax25','application','web'];
   const sections=[...form.querySelectorAll('.form-section[data-settings-key]')];
   return order.map(type=>{
     const element=sections.find(section=>section.dataset.settingsKey===type);
@@ -888,7 +880,7 @@ function syncSettingsRuntime(){
 }
 function settingsDesktopRuntime(){return true;}
 function syncNotificationChannels(){
-  const heading=document.querySelector('.form-section[data-settings-key="notifications"] > h3');
+  const heading=document.querySelector('.notification-settings > h3');
   if(heading)heading.textContent=state.catalog['settings.notifications']||(state.language==='en'?'Notifications':'Powiadomienia');
   const label=$('settings-desktop-autostart-label'),hint=$('settings-desktop-autostart-hint');
   if(label)label.textContent=state.language==='en'?'Launch UPR Terminal after signing in':'Uruchamiaj UPR Terminal po zalogowaniu';
