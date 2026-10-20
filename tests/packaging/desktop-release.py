@@ -13,22 +13,22 @@ with tempfile.TemporaryDirectory() as directory:
     for name in ['collect-desktop-release.py','finalize-release.py']:
         shutil.copy2(root/'scripts'/name,stage/'scripts'/name)
     for name in ['deb/test_amd64.deb','appimage/test.AppImage']:
-        path=stage/'desktop/target/release/bundle'/name
+        path=stage/'desktop/target/x86_64-unknown-linux-gnu/release/bundle'/name
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_bytes(b'isolated packaging fixture')
     out=stage/'out'
     subprocess.run([sys.executable,str(stage/'scripts/collect-desktop-release.py'),'linux-x86_64','vtest',str(out)],check=True)
     assert (out/'UPR-Terminal-vtest-linux-x86_64.deb').is_file()
     assert (out/'UPR-Terminal-vtest-linux-x86_64.AppImage').is_file()
-    nsis=stage/'desktop/target/release/bundle/nsis/UPR-Terminal_0.1.3_x64-setup.exe'
-    nsis.parent.mkdir(parents=True,exist_ok=True); nsis.write_bytes(b'NSIS fixture')
-    for platform,asset in [
-        ('windows-x86_64','UPR-Terminal-vtest-windows-x86_64-setup.exe'),
-        ('windows-i686','UPR-Terminal-vtest-windows-i686-setup.exe'),
+    for platform,target,asset in [
+        ('windows-x86_64','x86_64-pc-windows-msvc','UPR-Terminal-vtest-windows-x86_64-setup.exe'),
+        ('windows-i686','i686-pc-windows-msvc','UPR-Terminal-vtest-windows-i686-setup.exe'),
     ]:
+        nsis=stage/f'desktop/target/{target}/release/bundle/nsis/UPR-Terminal_0.1.3_x64-setup.exe'
+        nsis.parent.mkdir(parents=True,exist_ok=True); nsis.write_bytes(b'NSIS fixture')
         subprocess.run([sys.executable,str(stage/'scripts/collect-desktop-release.py'),platform,'vtest',str(out)],check=True)
         assert (out/asset).is_file()
-    dmg=stage/'desktop/target/release/bundle/dmg/UPR Terminal_0.1.3_universal.dmg'
+    dmg=stage/'desktop/target/universal-apple-darwin/release/bundle/dmg/UPR Terminal_0.1.3_universal.dmg'
     dmg.parent.mkdir(parents=True,exist_ok=True); dmg.write_bytes(b'DMG fixture')
     subprocess.run([sys.executable,str(stage/'scripts/collect-desktop-release.py'),'macos-universal','vtest',str(out)],check=True)
     assert (out/'UPR-Terminal-vtest-macos-universal.dmg').is_file()
