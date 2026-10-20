@@ -93,6 +93,10 @@ fn shutdown(app: &tauri::AppHandle) {
 fn tray_host_available() -> bool {
     true
 }
+#[cfg(target_os = "macos")]
+fn tray_host_available() -> bool {
+    true
+}
 #[cfg(target_os = "linux")]
 fn tray_host_available() -> bool {
     // A successful tray build is insufficient on GNOME without an indicator host.
