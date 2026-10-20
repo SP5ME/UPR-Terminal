@@ -16,7 +16,7 @@ Podział nie tworzy repozytorium zdalnego, nie robi push ani release.
 
 Do czasu zamknięcia listy zalecane jest repozytorium prywatne.
 Push sam nie publikuje Releases. Ręczny workflow wymaga unikalnego tagu
-i świadomego wyboru publikacji; zawsze oznacza wydanie jako pre-release.
+i świadomego wyboru publikacji oraz kanału stable/pre-release.
 Nie skonfigurowano podpisywania. Dopóki audyt jest otwarty, zachowaj repozytorium prywatne.
 
 

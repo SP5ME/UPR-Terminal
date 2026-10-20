@@ -1,4 +1,4 @@
-"""Create a validated GitHub pre-release, retrying transient API failures."""
+"""Create a validated GitHub release, retrying transient API failures."""
 
 import subprocess
 import sys
@@ -40,14 +40,14 @@ def release_exists(tag: str, repository: str) -> bool:
 
 
 def main() -> int:
-    if len(sys.argv) != 6:
+    if len(sys.argv) != 7:
         raise SystemExit(
-            "Użycie: create-release.py TAG OWNER/REPO COMMIT PUBLISH ASSET_DIRECTORY"
+            "Użycie: create-release.py TAG OWNER/REPO COMMIT PRERELEASE PUBLISH ASSET_DIRECTORY"
         )
 
-    tag, repository, commit, publish, asset_directory = sys.argv[1:]
-    if publish.lower() not in {"true", "false"}:
-        raise SystemExit("PUBLISH musi mieć wartość true albo false.")
+    tag, repository, commit, prerelease, publish, asset_directory = sys.argv[1:]
+    if prerelease.lower() not in {"true", "false"} or publish.lower() not in {"true", "false"}:
+        raise SystemExit("PRERELEASE i PUBLISH muszą mieć wartość true albo false.")
     assets = Path(asset_directory)
     notes = assets / "RELEASE-NOTES.md"
     if not notes.is_file():
@@ -56,12 +56,13 @@ def main() -> int:
     if release_exists(tag, repository):
         raise SystemExit(f"Wydanie {tag} już istnieje; odmawiam jego nadpisania.")
 
+    prerelease_option = ["--prerelease"] if prerelease.lower() == "true" else []
     command = [
         "release", "create", tag,
         "--repo", repository,
         "--target", commit,
         "--draft",
-        "--prerelease",
+        *prerelease_option,
         "--title", f"UPR Terminal {tag}",
         "--notes-file", str(notes),
         *[str(path) for path in sorted(assets.iterdir()) if path.is_file()],

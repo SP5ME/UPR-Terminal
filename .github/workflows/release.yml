@@ -7,8 +7,12 @@ on:
         required: true
         type: string
       publish:
-        description: Publish as pre-release after all checks (otherwise draft)
+        description: Publish after all checks (otherwise draft)
         default: false
+        type: boolean
+      prerelease:
+        description: Mark this release as a pre-release instead of stable
+        default: true
         type: boolean
 permissions:
   contents: read
@@ -112,5 +116,6 @@ jobs:
             "$RELEASE_TAG" \
             "${{ github.repository }}" \
             "${{ github.sha }}" \
+            "${{ inputs.prerelease }}" \
             "${{ inputs.publish }}" \
             target/release-assets

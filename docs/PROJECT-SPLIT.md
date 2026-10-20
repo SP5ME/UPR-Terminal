@@ -2,8 +2,9 @@
 
 Projekt: **UPR Terminal**, docelowe repozytorium **SP5ME/UPR-Terminal**.
 Baza historii: `eb42f2e0056c56f2ec0560330186e18641a83609`.
-Wersja pozostaje `0.1.3-prealpha.1`. Brak migracji schematu danych.
-Nie wykonano push ani wydania. Repozytorium Station nie jest tworzone automatycznie.
+Wersja wydania oficjalnego to `0.1.3`. Brak migracji schematu danych.
+W repozytorium są wcześniejsze wydania testowe; stabilne `0.1.3` jest przygotowywane.
+Repozytorium Station nie jest tworzone automatycznie.
 
 Oba produkty mają pełne własne źródła protokołów AX.25/KISS, poczty,
 YAPP, MHeard i testów. Nie korzystają z katalogu sąsiedniego projektu.

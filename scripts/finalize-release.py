@@ -10,7 +10,7 @@ for name in required:
     if not (root/name).is_file() or not (root/name).stat().st_size: raise SystemExit('Missing release asset: '+name)
 notes=f'''# UPR Terminal — {tag}
 
-Wydanie testowe pre-alfa. Wersja aplikacji: 0.1.3-prealpha.1.
+Wydanie oficjalne. Wersja aplikacji: 0.1.3.
 To wydanie zawiera wyłącznie UPR Terminal; drugi produkt ma osobne repozytorium.
 
 Windows: instalator NSIS. Linux x86-64: DEB i AppImage (WebKitGTK 4.1).
