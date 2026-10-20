@@ -1,0 +1,2 @@
+Upstream: https://github.com/madsmtm/objc2/tree/objc2-0.6.4
+Crate: https://crates.io/crates/objc2-app-kit/0.3.2
