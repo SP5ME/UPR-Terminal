@@ -1,6 +1,6 @@
 # UPR Terminal
 
-Niezależna aplikacja packet radio (AX.25/KISS), wersja `0.1.3`.
+Niezależna aplikacja packet radio (AX.25/KISS), wersja `0.1.4`.
 Repozytorium: `SP5ME/UPR-Terminal`. Desktop Windows/Linux z interfejsem Tauri, zasobnikiem, autostartem, dymkami i dźwiękiem.
 
 To nie jest APRS. Funkcje obejmują terminal radiowy, digipeater, MailBox,

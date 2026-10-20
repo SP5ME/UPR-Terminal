@@ -23,7 +23,7 @@ assert 'proxmox' not in (root/'scripts/download-release.py').read_text().lower()
 
 with tempfile.TemporaryDirectory() as directory:
     out=Path(directory)
-    required=(['UPR-Terminal-vtest-windows-x86_64-setup.exe','UPR-Terminal-vtest-linux-x86_64.deb','UPR-Terminal-vtest-linux-x86_64.AppImage','install.sh'] if DESKTOP else
+    required=(['UPR-Terminal-vtest-windows-x86_64-setup.exe','UPR-Terminal-vtest-windows-i686-setup.exe','UPR-Terminal-vtest-linux-x86_64.deb','UPR-Terminal-vtest-linux-x86_64.AppImage','UPR-Terminal-vtest-macos-universal.dmg','install.sh'] if DESKTOP else
         ['install-server.sh','install.sh']+[f'UPR-Station-vtest-{kind}-{arch}.{ext}' for arch in ['x86_64','aarch64','armv7'] for kind,ext in [('linux','tar.gz'),('alpine','zip'),('docker','tar.gz')]])
     for name in required:(out/name).write_bytes(b'isolated release contract fixture')
     script=root/'scripts/finalize-release.py'

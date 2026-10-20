@@ -43,3 +43,10 @@ wymaga unikalnego tagu i sprawdzenia wszystkich paczek. Domyślnie tworzy draft;
 po jawnym wyborze publikuje pre-release. Nie skonfigurowano podpisywania.
 Włącz wymagane kontrole gałęzi i ochronę sekretów przed publikacją.
 Dotychczasowe wydania w repo Terminal nie zostały zmienione ani usunięte.
+
+Workflow wydania buduje Windows x86-64 i i686, Linux x86-64 (DEB/AppImage)
+oraz uniwersalny DMG macOS dla Intel i Apple Silicon. Paczki macOS są obecnie
+niepodpisane i nienotaryzowane; dystrybucja bez ostrzeżeń Gatekeeper wymaga
+certyfikatu Apple Developer ID oraz skonfigurowania sekretów w GitHub Actions.
+Linux 32-bit nie jest publikowany: obecny zestaw WebKitGTK 4.1 i systemowych
+zależności projektu nie został zweryfikowany dla i686.

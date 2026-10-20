@@ -3,20 +3,28 @@ from pathlib import Path
 import sys
 tag,directory=sys.argv[1:]
 root=Path(directory)
-required=[f'UPR-Terminal-{tag}-windows-x86_64-setup.exe',f'UPR-Terminal-{tag}-linux-x86_64.deb',f'UPR-Terminal-{tag}-linux-x86_64.AppImage','install.sh']
+required=[
+    f'UPR-Terminal-{tag}-windows-x86_64-setup.exe',
+    f'UPR-Terminal-{tag}-windows-i686-setup.exe',
+    f'UPR-Terminal-{tag}-linux-x86_64.deb',
+    f'UPR-Terminal-{tag}-linux-x86_64.AppImage',
+    f'UPR-Terminal-{tag}-macos-universal.dmg',
+    'install.sh',
+]
 unexpected=[p.name for p in root.iterdir() if p.is_file() and p.name not in required+['RELEASE-NOTES.md','SHA256SUMS.txt']]
 if unexpected: raise SystemExit('Unexpected release assets: '+', '.join(unexpected))
 for name in required:
     if not (root/name).is_file() or not (root/name).stat().st_size: raise SystemExit('Missing release asset: '+name)
 notes=f'''# UPR Terminal — {tag}
 
-Wydanie oficjalne. Wersja aplikacji: 0.1.3.
+Wydanie oficjalne. Wersja aplikacji: 0.1.4.
 To wydanie zawiera wyłącznie UPR Terminal; drugi produkt ma osobne repozytorium.
 
-Windows: instalator NSIS. Linux x86-64: DEB i AppImage (WebKitGTK 4.1).
+Windows 10/11 x86-64 i Windows 10 32-bit: instalatory NSIS. macOS 10.15+ Intel + Apple Silicon: DMG uniwersalny.
+Linux x86-64: DEB i AppImage (Ubuntu 22.04+/Debian 12+ z WebKitGTK 4.1).
 Zamknij aplikację wraz z procesem zasobnika przed aktualizacją.
 Zachowano konfigurację, identyfikator instalacji i ścieżki danych.
-Instalator Windows nie jest podpisany certyfikatem wydawcy.
+Instalatory nie są podpisane certyfikatem wydawcy; macOS wymaga ręcznego zatwierdzenia aplikacji pobranej spoza App Store.
 
 Instalacja/aktualizacja: pobierz install.sh, następnie `sh install.sh`.
 Opcja `--version {tag}` przypina wydanie; domyślnie najnowszy opublikowany tag,

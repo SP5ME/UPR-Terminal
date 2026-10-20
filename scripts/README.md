@@ -8,6 +8,7 @@
 - `desktop-licenses.py`: zebranie not zależności z Cargo (nazwa historyczna).
 
 Budowanie desktopu: `build-desktop.ps1` lub `build-desktop-linux.sh`.
-`collect-desktop-release.py` zbiera NSIS/DEB/AppImage dla workflow wydania.
+`collect-desktop-release.py` zbiera Windows x86-64/i686, Linux x86-64 (DEB/AppImage)
+i macOS universal DMG dla workflow wydania.
 
 [Budowanie](../README.md), [instalacja Linux](../docs/LINUX-INSTALL.md).
