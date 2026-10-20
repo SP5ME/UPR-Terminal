@@ -59,7 +59,7 @@ pub fn open(device: &str, baud: u32) -> io::Result<File> {
         {
             return Err(io::Error::last_os_error());
         }
-        if libc::ioctl(fd, libc::TIOCEXCL) < 0 {
+        if libc::ioctl(fd, libc::TIOCEXCL as _) < 0 {
             return Err(io::Error::last_os_error());
         }
     }
