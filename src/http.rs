@@ -257,50 +257,8 @@ impl Server {
                     Err(_) => send(stream, 503, "text/plain", b"Station response timed out"),
                 };
             }
-            if r.method == "GET" && r.path == "/api/telegram/status" {
-                let (tx, rx) = mpsc::sync_channel(1);
-                if self
-                    .commands
-                    .try_send((
-                        Request {
-                            action: "telegram/status".into(),
-                            fields: HashMap::new(),
-                            body: vec![],
-                        },
-                        tx,
-                    ))
-                    .is_err()
-                {
-                    return send(stream, 503, "text/plain", b"Station busy; retry");
-                }
-                return match rx.recv_timeout(Duration::from_secs(10)) {
-                    Ok(Ok(reply)) => send(stream, 200, reply.mime, &reply.body),
-                    Ok(Err(e)) => send(stream, 400, "text/plain", e.as_bytes()),
-                    Err(_) => send(stream, 503, "text/plain", b"Station response timed out"),
-                };
-            }
-            if r.method == "GET" && r.path == "/api/update/status" {
-                let (tx, rx) = mpsc::sync_channel(1);
-                if self
-                    .commands
-                    .try_send((
-                        Request {
-                            action: "update/status".into(),
-                            fields: HashMap::new(),
-                            body: vec![],
-                        },
-                        tx,
-                    ))
-                    .is_err()
-                {
-                    return send(stream, 503, "text/plain", b"Station busy; retry");
-                }
-                return match rx.recv_timeout(Duration::from_secs(10)) {
-                    Ok(Ok(reply)) => send(stream, 200, reply.mime, &reply.body),
-                    Ok(Err(e)) => send(stream, 400, "text/plain", e.as_bytes()),
-                    Err(_) => send(stream, 503, "text/plain", b"Station response timed out"),
-                };
-            }
+
+
             if r.method == "GET" && r.path == "/api/file" {
                 let fields = match form(&r.query) {
                     Ok(f) => f,
@@ -328,7 +286,7 @@ impl Server {
             }
             let upload = matches!(
                 r.path.as_str(),
-                "/api/yapp/send" | "/api/update/upload"
+                "/api/yapp/send"
             );
             if !upload
                 && !r
@@ -474,7 +432,7 @@ fn read_request(stream: &mut TcpStream) -> Result<Input, String> {
         .transpose()
         .map_err(|_| "Invalid content length")?
         .unwrap_or(0);
-    let limit = if matches!(path.as_str(), "/api/yapp/send" | "/api/update/upload") {
+    let limit = if matches!(path.as_str(), "/api/yapp/send") {
         MAX_UPLOAD
     } else {
         256 * 1024

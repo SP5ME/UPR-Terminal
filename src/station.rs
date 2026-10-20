@@ -12,7 +12,7 @@ use crate::{
     history::History,
     json::{self, string as js},
     station_events::{Notification, NotificationKind, StationEvent},
-    storage, telegram,
+    storage,
     transfers::Transfers,
     web_config::WebConfig,
 };
@@ -30,7 +30,6 @@ struct Interface {
     error: String,
 }
 pub struct Station {
-    runtime: &'static str,
     config: Config,
     path: PathBuf,
     web_path: PathBuf,
@@ -54,8 +53,6 @@ pub struct Station {
     tx: u64,
     pub stopping: bool,
     event_sender: Option<std::sync::mpsc::SyncSender<crate::station_events::StationEvent>>,
-    telegram_sender: Option<std::sync::mpsc::SyncSender<telegram::Command>>,
-    mqtt_discovery_sender: Option<std::sync::mpsc::SyncSender<()>>,
     mailbox_seen: u64,
     presence_mode: String,
     absence_profile: u8,
@@ -80,47 +77,37 @@ pub struct Reply {
 mod configuration_tests {
     use super::*;
 
-    fn request(action: &str, text: &str) -> Request {
-        Request { action: action.into(), fields: HashMap::from([("text".into(), text.into())]), body: vec![] }
+    #[test]
+    fn removed_services_have_no_api_and_form_save_preserves_legacy_secrets() {
+        let root = crate::test_temp_dir("terminal-service-boundary");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("station.conf");
+        let text = "callsign=TEST-1\ntelegram_enabled=true\ntelegram_chat_id=12345\nnotification_outgoing_connection_telegram=true\n";
+        let mut station = Station::from_text(path, text.into(), None).unwrap();
+        fs::write(root.join("telegram.bot-token"), "private-existing-token").unwrap();
+        fs::write(root.join("mqtt.password"), "private-existing-password").unwrap();
+        for action in ["telegram/status", "mqtt/password", "mqtt/discovery", "update/status", "update/upload", "update/install", "web/save"] {
+            assert!(station.command(request(action, "")).is_err(), "{action}");
+        }
+        station.command(request("config/save", "callsign=TEST-1\nmyname=Updated\n")).unwrap();
+        assert!(station.config.telegram_enabled);
+        assert_eq!(station.config.telegram_chat_id, "12345");
+        assert!(station.config.notifications.outgoing_connection.telegram);
+        assert_eq!(fs::read_to_string(root.join("telegram.bot-token")).unwrap(), "private-existing-token");
+        assert_eq!(fs::read_to_string(root.join("mqtt.password")).unwrap(), "private-existing-password");
+        drop(station);
+        fs::remove_dir_all(root).unwrap();
     }
 
-    #[test]
-    fn telegram_is_server_only_without_erasing_desktop_configuration() {
-        let root = crate::test_temp_dir("telegram-runtime-boundary");
-        fs::create_dir_all(&root).unwrap();
-        let text = "callsign=TEST-1\ntelegram_enabled=true\ntelegram_chat_id=12345\nnotification_outgoing_connection_telegram=true\n";
-        let (sender, receiver) = std::sync::mpsc::sync_channel(8);
-        let mut server = Station::from_text(root.join("server.conf"), text.into(), None, "server").unwrap();
-        server.set_telegram_sender(Some(sender.clone()));
-        server.notify(NotificationKind::OutgoingConnection, "Connected", "PEER");
-        assert!(matches!(receiver.try_recv(), Ok(telegram::Command::Send(_))));
-
-        let mut desktop = Station::from_text(root.join("desktop.conf"), text.into(), None, "desktop").unwrap();
-        let token = desktop.telegram_token_path();
-        fs::write(&token, "existing-private-token").unwrap();
-        desktop.set_telegram_sender(Some(sender));
-        desktop.notify(NotificationKind::OutgoingConnection, "Connected", "PEER");
-        assert!(receiver.try_recv().is_err());
-        for action in ["telegram/status", "telegram/token", "telegram/select", "telegram/discover", "telegram/test"] {
-            assert!(desktop.command(request(action, "")).err().unwrap().contains("UPR Station"));
-        }
-        desktop.command(request("config/save", &format!("{text}myname=Updated\n"))).unwrap();
-        assert!(desktop.config.telegram_enabled);
-        assert_eq!(desktop.config.telegram_chat_id, "12345");
-        assert!(desktop.config.notifications.outgoing_connection.telegram);
-        assert_eq!(fs::read_to_string(token).unwrap(), "existing-private-token");
-        drop(desktop);
-        drop(server);
-        fs::remove_dir_all(root).unwrap();
+    fn request(action: &str, text: &str) -> Request {
+        Request { action: action.into(), fields: HashMap::from([("text".into(), text.into())]), body: vec![] }
     }
 
     #[test]
     fn autostart_requests_are_desktop_only_and_use_native_host_reply() {
         let root = crate::test_temp_dir("autostart-runtime-boundary");
         fs::create_dir_all(&root).unwrap();
-        let mut station = Station::from_text(root.join("station.conf"), "callsign=TEST-1\n".into(), None, "server").unwrap();
-        assert!(station.command(request("desktop/autostart", "")).err().unwrap().contains("UPR Terminal"));
-        station.runtime = "desktop";
+        let mut station = Station::from_text(root.join("station.conf"), "callsign=TEST-1\n".into(), None).unwrap();
         let (sender, receiver) = std::sync::mpsc::sync_channel(8);
         station.set_events(Some(sender));
         let invalid = Request { action: "desktop/autostart".into(), fields: HashMap::from([("enabled".into(), "yes".into())]), body: vec![] };
@@ -150,7 +137,7 @@ mod configuration_tests {
         let root = crate::test_temp_dir("station-independent-sound");
         fs::create_dir_all(&root).unwrap();
         let mut station = Station::from_text(root.join("station.conf"),
-            "callsign=TEST-1\n".into(), None, "server").unwrap();
+            "callsign=TEST-1\n".into(), None).unwrap();
         let (sender, receiver) = std::sync::mpsc::sync_channel(8);
         station.event_sender = Some(sender);
         for (in_app, native) in [(false, false), (true, false), (false, true), (true, true)] {
@@ -206,7 +193,7 @@ mod configuration_tests {
         fs::create_dir_all(&root).unwrap();
         let path = root.join("station.conf");
         let text = "callsign=TEST-1\ninterface_VHF=127.0.0.1:8001,0,0,true,Radio\nax25_autonegotiation=false\nax25_modulo_128=false\n";
-        let mut station = Station::from_text(path.clone(), text.into(), None, "server").unwrap();
+        let mut station = Station::from_text(path.clone(), text.into(), None).unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         station.interfaces[0].transport = Some(Transport::connect(&listener.local_addr().unwrap().to_string()).unwrap());
         let (_peer, _) = listener.accept().unwrap();
@@ -265,7 +252,7 @@ mod configuration_tests {
         let path = root.join("station.conf");
         let text = "callsign=TEST-1\nmailbox_enabled=true\nmailbox_callsign=TEST-2\nwl2k_enabled=true\nwl2k_gateway=RMS-1\nnotification_winlink_in-app=true\n";
         fs::write(&path, text).unwrap();
-        let mut station = Station::from_text(path.clone(), text.into(), None, "server").unwrap();
+        let mut station = Station::from_text(path.clone(), text.into(), None).unwrap();
         assert!(station.mailbox_engine.is_some());
         for action in ["wl2k/sync", "wl2k/create", "wl2k/read", "wl2k/file", "wl2k/password", "wl2k/p2p/start", "wl2k/grib", "wl2k/disconnect", "wl2k/attachment", "wl2k/mark", "wl2k/queue"] {
             assert!(station.command(request(action, "")).is_err(), "{action}");
@@ -363,37 +350,15 @@ impl Station {
             .max()
             .unwrap_or(0);
     }
-    pub fn set_telegram_sender(
-        &mut self,
-        sender: Option<std::sync::mpsc::SyncSender<telegram::Command>>,
-    ) {
-        self.telegram_sender = if self.runtime == "desktop" { None } else { sender };
-    }
+
     pub fn notify_application_started(&mut self) {
         self.notify(
             NotificationKind::ApplicationStarted,
             "Uruchomienie aplikacji",
-            if self.runtime == "desktop" {
-                "UPR Terminal jest gotowy do pracy"
-            } else {
-                "UPR Station jest gotowa do pracy"
-            },
+            "UPR Terminal jest gotowy do pracy",
         );
     }
-    pub fn set_mqtt_discovery_sender(&mut self, sender: Option<std::sync::mpsc::SyncSender<()>>) {
-        self.mqtt_discovery_sender = sender;
-    }
-    fn telegram_token_path(&self) -> PathBuf {
-        let configured = PathBuf::from(self.config.telegram_token_file.trim());
-        if configured.is_absolute() {
-            configured
-        } else {
-            self.path
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .join(configured)
-        }
-    }
+
     fn notify(
         &mut self,
         kind: NotificationKind,
@@ -415,9 +380,6 @@ impl Station {
         if !rule.in_app
             && !rule.native
             && rule.sound == 0
-            && !(rule.telegram
-                && self.config.telegram_enabled
-                && !self.config.telegram_chat_id.is_empty())
         {
             return;
         }
@@ -456,21 +418,10 @@ impl Station {
         {
             let _ = sender.try_send(StationEvent::Sound(rule.sound));
         }
-        if rule.telegram
-            && self.config.telegram_enabled
-            && !self.config.telegram_chat_id.is_empty()
-            && let Some(sender) = &self.telegram_sender
-        {
-            let text = format!("{title}\n{body}");
-            let _ = sender.try_send(telegram::Command::Send(telegram::MessageJob {
-                token_path: self.telegram_token_path(),
-                chat_id: self.config.telegram_chat_id.clone(),
-                text,
-            }));
-        }
+
     }
     pub fn notify_mail(&mut self) {
-        if self.event_sender.is_none() && self.telegram_sender.is_none() {
+        if self.event_sender.is_none() {
             return;
         }
         let mailbox_events = self
@@ -500,17 +451,15 @@ impl Station {
     pub fn new_with_web_config(
         path: PathBuf,
         web_path: Option<PathBuf>,
-        runtime: &'static str,
-    ) -> Result<Self, String> {
+        ) -> Result<Self, String> {
         let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        Self::from_text(path, raw, web_path, runtime)
+        Self::from_text(path, raw, web_path)
     }
     fn from_text(
         path: PathBuf,
         raw: String,
         web_path: Option<PathBuf>,
-        runtime: &'static str,
-    ) -> Result<Self, String> {
+        ) -> Result<Self, String> {
         let config = Config::parse(&raw)?;
         let web_settings = web_path
             .as_ref()
@@ -543,7 +492,6 @@ impl Station {
         let mheard_path = path.clone().with_file_name("mheard.dat");
         let heard = Heard::load(&mheard_path, Heard::current_utc(), config.interfaces.len());
         let mut s = Self {
-            runtime,
             engine: engine(&config, false),
             mailbox_engine: config.mailbox_enabled.then(|| engine(&config, true)),
             automatic: Automation::new(&config, &path, 0)?,
@@ -580,8 +528,6 @@ impl Station {
             tx: 0,
             stopping: false,
             event_sender: None,
-            telegram_sender: None,
-            mqtt_discovery_sender: None,
             mailbox_seen: 0,
             presence_mode: web_settings.presence_mode,
             absence_profile: web_settings.absence_profile,
@@ -886,18 +832,7 @@ impl Station {
             }
         }
     }
-    fn telegram_token_present(&self) -> bool {
-        storage::read_secret(&self.telegram_token_path()).is_ok_and(|bytes| !bytes.is_empty())
-    }
-    fn mqtt_password_path(&self) -> PathBuf {
-        self.web_path
-            .parent()
-            .unwrap_or(std::path::Path::new("."))
-            .join("mqtt.password")
-    }
-    fn mqtt_password_present(&self) -> bool {
-        storage::read_secret(&self.mqtt_password_path()).is_ok_and(|bytes| !bytes.is_empty())
-    }
+
     pub fn tick(&mut self) {
         let now = self.now();
         self.save_mheard_if_due(false);
@@ -1129,14 +1064,12 @@ impl Station {
         if self.stopping {
             return Err("Station is shutting down".into());
         }
-        if self.runtime == "desktop" && r.action.starts_with("telegram/") {
+        if r.action.starts_with("telegram/") {
             return Err("Telegram jest dostępny tylko w UPR Station".into());
         }
         match r.action.as_str() {
             "desktop/autostart" => {
-                if self.runtime != "desktop" {
-                    return Err("Autostart jest dostępny tylko w UPR Terminal".into());
-                }
+
                 let enabled = match get("enabled") {
                     "" => None,
                     "true" => Some(true),
@@ -1289,32 +1222,26 @@ impl Station {
             }
             "config" => return Ok(Reply::text(self.raw.clone())),
             "stats" => return Ok(Reply::json(self.statistics.snapshot())),
-            "update/status" => {
-                let root = crate::update::directory(&self.path);
-                return Ok(Reply::json(crate::update::status_json(&root)));
-            }
-            "update/upload" => {
-                let root = crate::update::directory(&self.path);
-                return crate::update::upload(&root, &r.body).map(Reply::json);
-            }
-            "update/install" => {
-                let root = crate::update::directory(&self.path);
-                return crate::update::start(&root).map(Reply::text);
+
+            "preferences/save" => {
+                let mut config = WebConfig::load(&self.web_path)?;
+                config.statistics_enabled = get("statistics_enabled").parse().map_err(|_| "Invalid statistics setting")?;
+                config.statistics_retention_days = match get("statistics_retention_days") {
+                    "continuous" => None,
+                    value => Some(value.parse::<u64>().map_err(|_| "Invalid statistics retention")?),
+                };
+                if config.statistics_retention_days.is_some_and(|days| ![7,30,90,365].contains(&days)) {
+                    return Err("Invalid statistics retention".into());
+                }
+                storage::backup_existing(&self.web_path).map_err(|e| e.to_string())?;
+                storage::write_atomic(&self.web_path, config.encode().as_bytes()).map_err(|e| e.to_string())?;
+                return Ok(Reply::ok());
             }
             "web/details" => {
                 let config = WebConfig::load(&self.web_path)?;
                 return Ok(Reply::json(json::object([
-                    ("runtime", js(self.runtime)),
-                    ("webPanel", "true".into()),
-                    ("bind", js(&config.bind.to_string())),
-                    (
-                        "tokenFile",
-                        js(&config
-                            .token_file
-                            .map(|p| p.display().to_string())
-                            .unwrap_or_default()),
-                    ),
-                    ("authEnabled", config.auth_enabled.to_string()),
+                    ("runtime", js("desktop")),
+                    ("webPanel", "false".into()),
                     ("presenceMode", js(&config.presence_mode)),
                     (
                         "presenceBarEnabled",
@@ -1330,15 +1257,6 @@ impl Station {
                             .map(|days| days.to_string())
                             .unwrap_or_else(|| "continuous".into())),
                     ),
-                    ("mqttEnabled", config.mqtt_enabled.to_string()),
-                    ("mqttBroker", js(&config.mqtt_broker)),
-                    ("mqttUsername", js(&config.mqtt_username)),
-                    ("mqttTls", config.mqtt_tls.to_string()),
-                    ("mqttClientId", js(&config.mqtt_client_id)),
-                    ("mqttTopicPrefix", js(&config.mqtt_topic_prefix)),
-                    ("mqttDiscoveryTopic", js(&config.mqtt_discovery_topic)),
-                    ("mqttDiscoveryEnabled", config.mqtt_discovery_enabled.to_string()),
-                    ("mqttPasswordPresent", self.mqtt_password_present().to_string()),
                     ("path", js(&self.web_path.display().to_string())),
                 ])));
             }
@@ -1401,306 +1319,14 @@ impl Station {
                     _ => Err("Nieznany kanał testowy powiadomień".into()),
                 };
             }
-            "telegram/status" => {
-                let status = if !self.config.telegram_enabled {
-                    "disabled"
-                } else if !self.telegram_token_present() {
-                    "missing_token"
-                } else if self.config.telegram_chat_id.is_empty() {
-                    "waiting_chat"
-                } else {
-                    "configured"
-                };
-                return Ok(Reply::json(json::object([
-                    ("status", js(status)),
-                    ("enabled", self.config.telegram_enabled.to_string()),
-                    ("tokenPresent", self.telegram_token_present().to_string()),
-                    ("chatId", js(&self.config.telegram_chat_id)),
-                ])));
-            }
-            "telegram/token" => {
-                let token = get("token").trim();
-                let path = self.telegram_token_path();
-                if token.is_empty() {
-                    match fs::remove_file(&path) {
-                        Ok(()) => {}
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(error) => {
-                            return Err(format!("Nie można usunąć tokenu Telegrama: {error}"));
-                        }
-                    }
-                } else {
-                    crate::telegram::TelegramClient::new(token.to_owned())
-                        .map_err(|e| e.to_string())?;
-                    storage::write_secret_atomic(&path, token.as_bytes())
-                        .map_err(|e| format!("Nie można zapisać tokenu Telegrama: {e}"))?;
-                }
-                return Ok(Reply::ok());
-            }
-            "telegram/select" => {
-                let chat = get("chat_id").trim();
-                if !crate::telegram::valid_chat_id(chat) {
-                    return Err("Nieprawidłowy identyfikator czatu Telegrama".into());
-                }
-                self.config.telegram_chat_id = chat.into();
-                let encoded = crate::config::encode(&self.config);
-                storage::backup_existing(&self.path).map_err(|e| e.to_string())?;
-                storage::write_atomic(&self.path, encoded.as_bytes()).map_err(|e| e.to_string())?;
-                self.raw = encoded;
-                return Ok(Reply::ok());
-            }
-            "telegram/discover" => {
-                let Some(sender) = &self.telegram_sender else {
-                    return Err("Klient Telegrama nie jest uruchomiony".into());
-                };
-                let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(1);
-                sender
-                    .try_send(crate::telegram::Command::Discover {
-                        token_path: self.telegram_token_path(),
-                        reply: reply_tx,
-                    })
-                    .map_err(|_| "Kolejka Telegrama jest zajęta")?;
-                let chats = reply_rx
-                    .recv_timeout(Duration::from_secs(15))
-                    .map_err(|_| "Telegram nie odpowiedział w wymaganym czasie")??;
-                return Ok(Reply::json(json::array(chats.into_iter().map(|chat| {
-                    json::object([
-                        ("id", js(&chat.id)),
-                        ("kind", js(&chat.kind)),
-                        ("name", js(&chat.name)),
-                    ])
-                }))));
-            }
-            "telegram/test" => {
-                let chat = if get("chat_id").trim().is_empty() {
-                    self.config.telegram_chat_id.clone()
-                } else {
-                    get("chat_id").trim().into()
-                };
-                if !crate::telegram::valid_chat_id(&chat) {
-                    return Err("Wybierz lub wpisz identyfikator czatu Telegrama".into());
-                }
-                let Some(sender) = &self.telegram_sender else {
-                    return Err("Klient Telegrama nie jest uruchomiony".into());
-                };
-                let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(1);
-                sender
-                    .try_send(crate::telegram::Command::Test {
-                        token_path: self.telegram_token_path(),
-                        chat_id: chat,
-                        reply: reply_tx,
-                    })
-                    .map_err(|_| "Kolejka Telegrama jest zajęta")?;
-                reply_rx
-                    .recv_timeout(Duration::from_secs(15))
-                    .map_err(|_| "Telegram nie odpowiedział w wymaganym czasie")??;
-                return Ok(Reply::ok());
-            }
-            "mqtt/password" => {
-                let password = get("password");
-                if password.len() > 256
-                    || password
-                        .bytes()
-                        .any(|byte| byte.is_ascii_control())
-                {
-                    return Err("Hasło MQTT może mieć maksymalnie 256 znaków i nie może zawierać znaków sterujących".into());
-                }
-                let path = self.mqtt_password_path();
-                if password.is_empty() {
-                    match fs::remove_file(&path) {
-                        Ok(()) => {}
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(error) => return Err(format!("Nie można usunąć hasła MQTT: {error}")),
-                    }
-                } else {
-                    storage::write_secret_atomic(&path, password.as_bytes())
-                        .map_err(|error| format!("Nie można zapisać hasła MQTT: {error}"))?;
-                }
-                return Ok(Reply::ok());
-            }
-            "mqtt/discovery" => {
-                let Some(sender) = &self.mqtt_discovery_sender else {
-                    return Err("MQTT nie jest uruchomione. Włącz MQTT i zrestartuj aplikację.".into());
-                };
-                sender
-                    .try_send(())
-                    .map_err(|_| "Kolejka MQTT jest zajęta albo usługa jest zatrzymywana")?;
-                return Ok(Reply::ok());
-            }
+
             "serial/ports" => {
                 let ports = Transport::available_serial_ports().map_err(|e| e.to_string())?;
                 return Ok(Reply::json(json::array(
                     ports.into_iter().map(|port| js(&port)),
                 )));
             }
-            "web/save" => {
-                let old_web = WebConfig::load(&self.web_path)?;
-                let bind = get("bind")
-                    .parse()
-                    .map_err(|_| "Invalid web bind address")?;
-                let token_file = get("token_file");
-                let auth_enabled = match get("auth_enabled") {
-                    "true" => true,
-                    "false" => false,
-                    "" => old_web.auth_enabled,
-                    _ => return Err("auth_enabled must be true/false".into()),
-                };
-                let presence_mode = match get("presence_mode") {
-                    "auto" | "always" | "dnd" => get("presence_mode").to_owned(),
-                    "" => old_web.presence_mode.clone(),
-                    _ => return Err("Invalid presence_mode".into()),
-                };
-                let presence_bar_enabled = match get("presence_bar_enabled") {
-                    "true" => true,
-                    "false" => false,
-                    "" => old_web.presence_bar_enabled,
-                    _ => return Err("presence_bar_enabled must be true/false".into()),
-                };
-                let absence_profile = if get("absence_profile").is_empty() {
-                    old_web.absence_profile
-                } else {
-                    get("absence_profile")
-                        .parse::<u8>()
-                        .map_err(|_| "Invalid absence_profile")?
-                };
-                if !(1..=4).contains(&absence_profile) {
-                    return Err("absence_profile must be 1..4".into());
-                }
-                let heartbeat_timeout = if get("heartbeat_timeout").is_empty() {
-                    old_web.heartbeat_timeout
-                } else {
-                    get("heartbeat_timeout")
-                        .parse::<u64>()
-                        .map_err(|_| "Invalid heartbeat_timeout")?
-                        .clamp(15, 3600)
-                };
-                let statistics_enabled = match get("statistics_enabled") {
-                    "true" => true,
-                    "false" => false,
-                    "" => old_web.statistics_enabled,
-                    _ => return Err("statistics_enabled must be true/false".into()),
-                };
-                let statistics_retention_days = match get("statistics_retention_days") {
-                    "" => old_web.statistics_retention_days,
-                    "continuous" => None,
-                    value => Some(
-                        value
-                            .parse::<u64>()
-                            .map_err(|_| "statistics_retention_days must be continuous or a number")?
-                            .clamp(1, 3650),
-                    ),
-                };
-                let mqtt_enabled = match get("mqtt_enabled") {
-                    "true" => true,
-                    "false" => false,
-                    "" => old_web.mqtt_enabled,
-                    _ => return Err("mqtt_enabled must be true/false".into()),
-                };
-                let mqtt_tls = match get("mqtt_tls") {
-                    "true" => true,
-                    "false" => false,
-                    "" => old_web.mqtt_tls,
-                    _ => return Err("mqtt_tls must be true/false".into()),
-                };
-                let mqtt_discovery_enabled = match get("mqtt_discovery_enabled") {
-                    "true" => true,
-                    "false" => false,
-                    "" => old_web.mqtt_discovery_enabled,
-                    _ => return Err("mqtt_discovery_enabled must be true/false".into()),
-                };
-                let mqtt_broker = if get("mqtt_broker").is_empty() {
-                    old_web.mqtt_broker.clone()
-                } else {
-                    get("mqtt_broker").trim().to_owned()
-                };
-                let mqtt_username = get("mqtt_username").trim().to_owned();
-                let mqtt_client_id = if get("mqtt_client_id").trim().is_empty() {
-                    old_web.mqtt_client_id.clone()
-                } else {
-                    get("mqtt_client_id").trim().to_owned()
-                };
-                let mqtt_topic_prefix = if get("mqtt_topic_prefix").trim().is_empty() {
-                    old_web.mqtt_topic_prefix.clone()
-                } else {
-                    get("mqtt_topic_prefix").trim().to_owned()
-                };
-                let mqtt_discovery_topic = if get("mqtt_discovery_topic").trim().is_empty() {
-                    old_web.mqtt_discovery_topic.clone()
-                } else {
-                    get("mqtt_discovery_topic").trim().to_owned()
-                };
-                if mqtt_broker.len() > 256
-                    || mqtt_username.len() > 128
-                    || mqtt_client_id.len() > 128
-                    || mqtt_topic_prefix.len() > 128
-                    || mqtt_discovery_topic.len() > 128
-                {
-                    return Err("Ustawienia MQTT przekraczają dozwolony rozmiar".into());
-                }
-                if mqtt_topic_prefix.chars().any(char::is_whitespace)
-                    || mqtt_topic_prefix.contains('#')
-                    || mqtt_topic_prefix.contains('+')
-                {
-                    return Err("Prefiks tematów MQTT nie może zawierać białych znaków, # ani +".into());
-                }
-                if mqtt_discovery_topic.chars().any(char::is_whitespace)
-                    || mqtt_discovery_topic.contains('#')
-                    || mqtt_discovery_topic.contains('+')
-                {
-                    return Err("Temat Discovery MQTT nie może zawierać białych znaków, # ani +".into());
-                }
-                let token_path = (!token_file.is_empty()).then(|| PathBuf::from(token_file));
-                if token_path.as_ref().is_some_and(|path| {
-                    path.components()
-                        .any(|component| matches!(component, std::path::Component::ParentDir))
-                }) {
-                    return Err("Token file path cannot contain '..'".into());
-                }
-                let config = WebConfig {
-                    bind,
-                    token_file: token_path,
-                    auth_enabled,
-                    auth_configured: true,
-                    presence_mode: presence_mode.clone(),
-                    presence_bar_enabled,
-                    absence_profile,
-                    heartbeat_timeout,
-                    statistics_enabled,
-                    statistics_retention_days,
-                    mqtt_enabled,
-                    mqtt_broker,
-                    mqtt_username,
-                    mqtt_tls,
-                    mqtt_client_id,
-                    mqtt_topic_prefix,
-                    mqtt_discovery_topic,
-                    mqtt_discovery_enabled,
-                };
-                let restart_required = config.bind != old_web.bind
-                    || config.token_file != old_web.token_file
-                    || config.auth_enabled != old_web.auth_enabled
-                    || config.mqtt_enabled != old_web.mqtt_enabled
-                    || config.mqtt_broker != old_web.mqtt_broker
-                    || config.mqtt_username != old_web.mqtt_username
-                    || config.mqtt_tls != old_web.mqtt_tls
-                    || config.mqtt_client_id != old_web.mqtt_client_id
-                    || config.mqtt_topic_prefix != old_web.mqtt_topic_prefix
-                    || config.mqtt_discovery_topic != old_web.mqtt_discovery_topic
-                    || config.mqtt_discovery_enabled != old_web.mqtt_discovery_enabled;
-                storage::backup_existing(&self.web_path).map_err(|e| e.to_string())?;
-                storage::write_atomic(&self.web_path, config.encode().as_bytes())
-                    .map_err(|e| e.to_string())?;
-                self.presence_mode = presence_mode;
-                self.absence_profile = absence_profile;
-                self.heartbeat_timeout = Duration::from_secs(heartbeat_timeout);
-                self.statistics.set_enabled(statistics_enabled);
-                self.statistics
-                    .set_retention_days(statistics_retention_days);
-                return Ok(Reply::json(json::object([
-                    ("ok", "true".into()),
-                    ("restartRequired", restart_required.to_string()),
-                ])));
-            }
+
             "presence/mode" => {
                 let mode = get("mode");
                 if !matches!(mode, "auto" | "always" | "dnd") {
@@ -1818,7 +1444,7 @@ impl Station {
                     ("telegramChatId", js(&self.config.telegram_chat_id)),
                     (
                         "telegramTokenPresent",
-                        self.telegram_token_present().to_string(),
+                        "false".to_owned(),
                     ),
                     ("notifications", json::array(notifications)),
                     ("interfaces", json::array(interfaces)),
@@ -1829,7 +1455,15 @@ impl Station {
                 if text.len() > 65536 {
                     return Err("Configuration exceeds 64 KiB".into());
                 }
-                let config = Config::parse(text)?;
+                let mut config = Config::parse(text)?;
+                { // Preserve inactive service settings from the existing profile.
+                    config.telegram_enabled = self.config.telegram_enabled;
+                    config.telegram_chat_id = self.config.telegram_chat_id.clone();
+                    config.telegram_token_file = self.config.telegram_token_file.clone();
+                    for kind in NotificationKind::ALL {
+                        config.notifications.rule_mut(kind).telegram = self.config.notifications.rule(kind).telegram;
+                    }
+                }
                 let rebuild = self.configuration_requires_rebuild(&config);
                 if r.action == "config/check" {
                     return Ok(Reply::json(json::object([
@@ -1861,13 +1495,10 @@ impl Station {
                     self.path.clone(),
                     text.clone(),
                     Some(self.web_path.clone()),
-                    self.runtime,
                 )?;
                 storage::backup_existing(&self.path).map_err(|e| e.to_string())?;
                 storage::write_atomic(&self.path, text.as_bytes()).map_err(|e| e.to_string())?;
                 next.set_events(self.event_sender.clone());
-                next.set_telegram_sender(self.telegram_sender.clone());
-                next.set_mqtt_discovery_sender(self.mqtt_discovery_sender.clone());
                 *self = next;
             }
             "templates" => {
@@ -1991,136 +1622,6 @@ impl Station {
             _ => return Err("Unknown command".into()),
         }
         Ok(Reply::ok())
-    }
-    pub fn mqtt_callsign(&self) -> String {
-        self
-            .config
-            .call
-            .as_ref()
-            .map(ToString::to_string)
-            .unwrap_or_else(|| "NOCALL".into())
-    }
-
-    pub fn mqtt_messages(
-        &self,
-        prefix: &str,
-        discovery_enabled: bool,
-        discovery_topic: &str,
-    ) -> Vec<crate::mqtt::Message> {
-        let callsign = self.mqtt_callsign();
-        let base = format!("{}/{}", prefix.trim_end_matches('/'), callsign);
-        let status_topic = format!("{base}/status");
-        let tnc_topic = format!("{base}/tnc");
-        let mheard_topic = format!("{base}/mheard");
-        let device = json::object([
-            ("ids", js(&format!("ultimatepr-{callsign}"))),
-            ("name", js(&format!("UltimatePR {callsign}"))),
-            ("mf", js("UltimatePR")),
-            ("mdl", js("Station")),
-        ]);
-        let discovery =
-            |component: &str,
-             unique: &str,
-             name: &str,
-             topic: &str,
-             template: &str,
-             attributes_template: Option<&str>| {
-                let mut fields = vec![
-                    ("name", js(name)),
-                    ("uniq_id", js(unique)),
-                    ("stat_t", js(topic)),
-                    ("val_tpl", js(template)),
-                    ("dev", device.clone()),
-                ];
-                if let Some(attributes_template) = attributes_template {
-                    fields.push(("json_attributes_topic", js(topic)));
-                    fields.push(("json_attributes_template", js(attributes_template)));
-                }
-                crate::mqtt::Message {
-                    topic: format!(
-                        "{}/sensor/ultimatepr-{callsign}/{component}/config",
-                        discovery_topic.trim_end_matches('/'),
-                    ),
-                    payload: json::object(fields),
-                    retain: true,
-                }
-            };
-        let mut messages = vec![
-            crate::mqtt::Message {
-                topic: status_topic.clone(),
-                payload: json::object([
-                    ("state", js("online")),
-                    ("callsign", js(&callsign)),
-                    ("uptime", (self.now() / 1000).to_string()),
-                ]),
-                retain: true,
-            },
-            crate::mqtt::Message {
-                topic: tnc_topic.clone(),
-                payload: json::array(self.interfaces.iter().map(|interface| {
-                    json::object([
-                        ("name", js(&interface.config.name)),
-                        ("enabled", interface.config.enabled.to_string()),
-                        ("online", interface.transport.is_some().to_string()),
-                        ("error", js(&interface.error)),
-                    ])
-                })),
-                retain: true,
-            },
-            crate::mqtt::Message {
-                topic: mheard_topic.clone(),
-                payload: json::array(self.heard.entries().iter().map(|entry| {
-                    json::object([
-                        ("call", js(&entry.source.to_string())),
-                        (
-                            "interface",
-                            js(&self
-                                .config
-                                .interfaces
-                                .get(entry.interface)
-                                .map(|interface| interface.name.clone())
-                                .unwrap_or_else(|| format!("TNC{}", entry.interface + 1))),
-                        ),
-                        (
-                            "age",
-                            entry
-                                .age_seconds_at(self.now(), Heard::current_utc())
-                                .to_string(),
-                        ),
-                        ("destination", js(&entry.destination.to_string())),
-                        ("via", js(&entry.route())),
-                    ])
-                })),
-                retain: true,
-            },
-        ];
-        if discovery_enabled {
-            messages.push(discovery(
-                "status",
-                &format!("ultimatepr-{callsign}-status"),
-                &format!("{callsign} status"),
-                &status_topic,
-                "{{ value_json.state }}",
-                None,
-            ));
-            messages.push(discovery(
-                "tnc",
-                &format!("ultimatepr-{callsign}-tnc"),
-                &format!("{callsign} TNC"),
-                &tnc_topic,
-                "{{ value_json | length }}",
-                Some("{\"interfaces\": {{ value_json | tojson }}}"),
-            ));
-            messages.push(discovery(
-                "mheard",
-                &format!("ultimatepr-{callsign}-mheard"),
-                &format!("{callsign} MHeard"),
-                &mheard_topic,
-                "{{ value_json | length }}",
-                Some("{\"stations\": {{ value_json | tojson }}}"),
-            ));
-        }
-        messages
     }
 
     pub fn snapshot(&self) -> String {

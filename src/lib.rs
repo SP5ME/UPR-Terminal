@@ -8,15 +8,12 @@ pub mod kiss;
 pub mod link;
 pub mod mailbox;
 pub mod mheard;
-pub mod mqtt;
 #[cfg(unix)]
 mod serial;
 pub mod statistics;
 pub mod storage;
-pub mod telegram;
 pub mod transport;
 pub mod yapp;
-pub mod update;
 
 #[cfg(test)]
 pub(crate) fn test_temp_dir(prefix: &str) -> std::path::PathBuf {

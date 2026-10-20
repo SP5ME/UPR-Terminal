@@ -492,7 +492,9 @@ impl Config {
                             "Telegram chat id is too long or contains control characters".into(),
                         );
                     }
-                    if !value.is_empty() && !crate::telegram::valid_chat_id(value) {
+                    // Read old Station profiles without requiring a Telegram client.
+                    if !value.is_empty() && !(value.len() <= 128
+                        && (value.starts_with('@') || value.chars().all(|c| c == '-' || c.is_ascii_digit()))) {
                         return Err("Telegram chat id must be numeric or start with @".into());
                     }
                     c.telegram_chat_id = value.into();

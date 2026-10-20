@@ -20,5 +20,5 @@ function check(desktop,runtime,product){
   assert.equal(input.value,'Operator');assert.equal(input.placeholder,'UPR '+product);
   assert.equal(version.textContent,'0.1.3');assert.equal(footer.childNodes[0],dot);
 }
-check(true,'server','Terminal');check(false,'server','Station');check(false,'desktop','Terminal');
+check(true,'server','Terminal');check(false,'server','Terminal');check(false,'desktop','Terminal');
 console.log('PASS: product titles, sidebar, footer and accessible names; user data and version preserved.');

@@ -10,7 +10,7 @@ from unittest.mock import patch
 import urllib.request
 
 script=Path(__file__).resolve().parents[2]/'scripts/download-release.py'
-name='UPR-Station-vtest-linux-x86_64.tar.gz'
+name='UPR-Terminal-vtest-linux-x86_64.deb'
 payload=b'isolated-package-test'
 digest=hashlib.sha256(payload).hexdigest()
 release={'tag_name':'vtest','draft':False,'assets':[{'name':name,'url':'https://api.github.com/package'},{'name':'SHA256SUMS.txt','url':'https://api.github.com/sums'}]}
@@ -27,14 +27,14 @@ class Opener:
         if request.full_url.endswith('/sums'): return io.BytesIO(f'{"0"*64 if self.bad else digest}  {name}\n'.encode())
         return io.BytesIO(payload)
 with tempfile.TemporaryDirectory() as directory:
-    with patch('sys.argv',[str(script),directory,'vtest','x86_64','native']),patch('urllib.request.build_opener',return_value=Opener()),patch.dict(os.environ,{'GITHUB_TOKEN':'isolated-test-token'}):
+    with patch('sys.argv',[str(script),directory,'vtest','x86_64','terminal']),patch('urllib.request.build_opener',return_value=Opener()),patch.dict(os.environ,{'GITHUB_TOKEN':'isolated-test-token'}):
         module=runpy.run_path(str(script))
     assert (Path(directory)/name).read_bytes()==payload
     redirect=module['SafeRedirect']()
     request=urllib.request.Request('https://api.github.com/a',headers={'Authorization':'Bearer isolated-test-token'})
     redirected=redirect.redirect_request(request,None,302,'Found',{},'https://release-assets.githubusercontent.com/a')
     assert not redirected.has_header('Authorization')
-for mode,asset in [('installer','install-server.sh'),('terminal','UPR-Terminal-vtest-linux-x86_64.deb')]:
+for mode,asset in [('terminal','UPR-Terminal-vtest-linux-x86_64.deb')]:
     name=asset
     release['assets'][0]['name']=name
     with tempfile.TemporaryDirectory() as directory:
@@ -42,12 +42,12 @@ for mode,asset in [('installer','install-server.sh'),('terminal','UPR-Terminal-v
             runpy.run_path(str(script))
         assert (Path(directory)/name).read_bytes()==payload
         assert (Path(directory)/'release-tag.txt').read_text()=='vtest'
-name='UPR-Station-vtest-linux-x86_64.tar.gz'
+name='UPR-Terminal-vtest-linux-x86_64.deb'
 release['assets'][0]['name']=name
 with tempfile.TemporaryDirectory() as directory:
-    with patch('sys.argv',[str(script),directory,'vtest','x86_64','native']),patch('urllib.request.build_opener',return_value=Opener(bad=True)):
+    with patch('sys.argv',[str(script),directory,'vtest','x86_64','terminal']),patch('urllib.request.build_opener',return_value=Opener(bad=True)):
         try: runpy.run_path(str(script))
         except SystemExit as error: assert error.code==1
         else: raise AssertionError('Bad checksum was accepted')
     assert (Path(directory)/name).read_bytes()==payload, 'Checksum failure must be tested after downloading the selected asset'
-print('PASS: pinned/latest pre-release selection, draft exclusion, server/desktop assets, mandatory SHA-256 and no token forwarding to another host.')
+print('PASS: pinned/latest pre-release selection, draft exclusion, UPR Terminal assets, mandatory SHA-256 and no token forwarding to another host.')

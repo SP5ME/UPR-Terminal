@@ -163,8 +163,7 @@ function playNotificationSound(count){
   }catch{}
 }
 function syncProductIdentity(){
-  const desktop=Boolean(window.__UPR_DESKTOP__)||state.webDetails?.runtime==='desktop';
-  const variant=desktop?'Terminal':'Station',name=`UPR ${variant}`;
+  const variant='Terminal',name=`UPR ${variant}`;
   document.title=name;
   const brand=document.querySelector('.sidebar .brand');
   brand?.setAttribute('aria-label',name);
@@ -523,7 +522,7 @@ async function refreshConfigurationUi(){
 }async function saveAllConfiguration(force=false){
   if(state.configSaveInProgress)return false;
   state.configSaveInProgress=true;
-  try{const saved=await saveStationConfiguration(force);if(!saved)return false;const webResult=await saveWebConfiguration();await refreshConfigurationUi();collapseSettingsSections();toast(webResult?.restartRequired==='true'||webResult?.restartRequired===true?'Ustawienia zapisane. Zrestartuj aplikację, aby zastosować zmiany dostępu WWW.':'Ustawienia zapisane.');return true;}finally{state.configSaveInProgress=false;}
+  try{const saved=await saveStationConfiguration(force);if(!saved)return false;const webResult=await saveLocalPreferences();await refreshConfigurationUi();collapseSettingsSections();toast(webResult?.restartRequired==='true'||webResult?.restartRequired===true?'Ustawienia zapisane. Zrestartuj aplikację, aby zastosować zmiany dostępu WWW.':'Ustawienia zapisane.');return true;}finally{state.configSaveInProgress=false;}
 }
 $('config-save').onclick=()=>guard(()=>saveAllConfiguration(false));
 $('settings-language').addEventListener('change',()=>guard(()=>loadLanguage($('settings-language').value)));
@@ -532,9 +531,6 @@ const settingsHelp={
   'settings-callsign':['Znak stacji używany w adresowaniu AX.25.','Station callsign used for AX.25 addressing.'],
   'settings-myname':['Czytelna nazwa widoczna w informacjach i wiadomościach.','Friendly name shown in station information and messages.'],
   'settings-language':['Język interfejsu WWW; zmiana działa od razu.','Web interface language; changes apply immediately.'],
-  'settings-web-bind':['Adres i port, na którym serwer WWW przyjmuje połączenia.','Address and port where the web server accepts connections.'],
-  'settings-web-token-file':['Opcjonalny plik tokenu operatora.','Optional operator token file.'],
-  'settings-web-timeout':['W trybie Auto brak sygnałów obecności z przeglądarki (heartbeat) przez ten czas oznacza nieobecność operatora.','In Auto mode, no browser heartbeat for this duration marks the operator as absent.'],
   'settings-t1':['Czas oczekiwania na potwierdzenie ramki AX.25.','AX.25 frame acknowledgement timeout.'],
   'settings-t3':['Interwał kontroli bezczynnego połączenia AX.25.','Idle AX.25 connection check interval.'],
   'settings-retries':['Maksymalna liczba ponowień transmisji.','Maximum number of transmission retries.'],
@@ -557,27 +553,15 @@ function settingsLanguage(){return state.language==='pl'?'pl':'en';}
 function setHelpDot(label,text){if(!label)return;let dot=label.querySelector(':scope > .help-dot');if(!dot){dot=node('button','help-dot');dot.type='button';dot.append(svgIcon('help-circle-outline'));dot.addEventListener('mousedown',event=>event.preventDefault());dot.addEventListener('click',event=>event.preventDefault());label.append(dot);}else if(!dot.querySelector('.icon')){dot.append(svgIcon('help-circle-outline'));}dot.dataset.help=text;dot.setAttribute('aria-label',text);dot.title=text;label.dataset.help=text;label.removeAttribute('title');}
 function decorateSettingsControls(){const lang=settingsLanguage();Object.entries(settingsHelp).forEach(([id,text])=>{const label=$(id)?.closest('label');if(label)setHelpDot(label,text[lang==='pl'?0:1]);});document.querySelectorAll('#interface-forms > .interface-form label').forEach(label=>{const control=label.querySelector('input,select');if(!control)return;const text={'if-name':['Nazwa używana przez komendy /ports i konfigurację.','Name used by /ports commands and configuration.'],'if-description':['Opis interfejsu widoczny w panelu.','Interface description shown in the panel.'],'if-transport':['Wybierz TCP dla sieci lub Serial dla urządzenia szeregowego.','Choose TCP for network or Serial for a serial device.'],'if-endpoint':['Adres host:port albo ścieżka urządzenia szeregowego.','Host:port address or serial device path.'],'if-baud':['Prędkość portu szeregowego.','Serial port speed.'],'if-port':['Numer portu KISS używany przez TNC.','KISS port number used by the TNC.'],'if-priority':['Niższa wartość oznacza wyższy priorytet.','Lower value means higher priority.'],'if-path':['Opcjonalna ścieżka digipeater dla beaconu.','Optional digipeater path for the beacon.']}[control.className||control.id];if(text)setHelpDot(label,text[lang==='pl'?0:1]);});}
 function decorateSettingsSections(){const form=document.querySelector('.settings-form');if(!form)return;[...form.querySelectorAll('.form-section')].forEach((section,index)=>{section.dataset.settingsIndex=index;let help=section.querySelector(':scope > .section-help');if(!help){help=node('p','section-help');section.querySelector(':scope > h3')?.after(help);}const key=section.dataset.settingsKey;const copy=['notifications','application'].includes(key)?helpDescriptions[key]?.[settingsLanguage()]:null;const text=settingsSectionHelp[index];if(copy)help.textContent=copy.summary;else if(text)help.textContent=text[settingsLanguage()==='pl'?0:1];});const side=document.querySelector('#view-settings .settings-side')||document.querySelector('#view-settings .settings-grid>div');side?.classList.add('settings-side');decorateSettingsControls();}
- function ensureWebSettings(){if($('settings-web-bind'))return;const form=document.querySelector('.settings-form .panel-content');if(!form)return;const section=node('div','form-section');section.dataset.settingsKey='application';section.innerHTML='<h3>WWW</h3><p class="section-help">Adres panelu, dostęp operatora, obecność oraz ustawienia wspólne dla aplikacji desktopowej i serwera.</p><div class="form-grid"><label>Adres nasłuchu WWW<input id="settings-web-bind" placeholder="127.0.0.1:8080"></label><label>Plik tokenu operatora<input id="settings-web-token-file" placeholder="operator.token"></label><label><input id="settings-web-auth" type="checkbox"> Wymagaj logowania operatora</label><label>Obecność operatora<select id="settings-web-presence"><option value="auto">Auto</option><option value="always">Zawsze dostępny</option><option value="dnd">Nie przeszkadzać</option></select></label><label>Profil nieobecności<select id="settings-web-profile"><option value="1">1 — operator dostępny</option><option value="2">2 — informuj i komendy</option><option value="3">3 — poinformuj i rozłącz</option><option value="4">4 — stacja zamknięta</option></select></label><label>Limit heartbeat (s)<input id="settings-web-timeout" type="number" min="15" max="3600" step="5"></label></div><div class="check-grid"><label><input id="settings-statistics" type="checkbox"> Zbieranie statystyk stacji</label><label><input id="settings-presence-bar" type="checkbox"> Wyświetl pasek obecności operatora</label></div><p id="settings-web-warning" class="notice" hidden>Logowanie jest wyłączone, a panel nasłuchuje poza adresem lokalnym.</p>';const actions=form.querySelector(':scope > .actions');form.insertBefore(section,actions||null);}function collapseApplicationSettings(application){
+function ensureLocalPreferences(){
+  const form=document.querySelector('.settings-form .panel-content');
+  if(!form||form.querySelector('[data-settings-key="application"]'))return;
+  const section=node('div','form-section');section.dataset.settingsKey='application';
+  section.innerHTML='<h3>Aplikacja</h3><div class="check-grid"><label><input id="settings-statistics" type="checkbox"> Zbieranie statystyk stacji</label><label>Przechowywanie historii statystyk<select id="settings-statistics-retention"><option value="continuous">Ciągły</option><option value="7">7 dni</option><option value="30">30 dni</option><option value="90">90 dni</option><option value="365">365 dni</option></select></label></div>';
+  form.append(section);
+}
+function collapseApplicationSettings(application){
   if(!application||application.dataset.settingsGroupsReady==='true')return;
-  const serverGrid=$('settings-web-bind')?.closest('.form-grid');
-  if(serverGrid?.parentElement===application){
-    serverGrid.dataset.webGroup='server';
-    const presenceGrid=node('div','form-grid');
-    presenceGrid.dataset.webGroup='presence';
-    ['settings-web-presence','settings-web-profile','settings-web-timeout','settings-presence-bar'].forEach(id=>{
-      const label=$(id)?.closest('label');
-      if(label)presenceGrid.append(label);
-    });
-    serverGrid.after(presenceGrid);
-    $('settings-web-auth')?.closest('label')?.classList.add('web-login-option');
-    $('settings-presence-bar')?.closest('label')?.classList.add('web-presence-bar-option');
-    const timeoutLabel=$('settings-web-timeout')?.closest('label');
-    const caption=timeoutLabel&&[...timeoutLabel.childNodes].find(child=>child.nodeType===3&&child.textContent.trim());
-    if(caption)caption.textContent='Czas uznania operatora za nieobecnego (s)';
-    if(timeoutLabel)setHelpDot(timeoutLabel,settingsHelp['settings-web-timeout'][settingsLanguage()==='pl'?0:1]);
-    $('settings-web-presence')?.addEventListener('change',syncPresenceTimeout);
-    syncPresenceTimeout();
-  }
   // Never wrap a card that has already been grouped.  This function is called
   // again after language/runtime refreshes, so selecting all direct children
   // would make the same section nest inside itself on every pass.
@@ -606,15 +590,11 @@ function decorateSettingsSections(){const form=document.querySelector('.settings
     card.append(header,body);
     if(!open)card.classList.add('collapsed');
   };
-  group('Serwer WWW i logowanie',item=>item.dataset.webGroup==='server'||item.id==='settings-web-warning');
-  group('Obecność operatora',item=>item.dataset.webGroup==='presence');
   group('Statystyki',item=>item.matches('.check-grid')&&item.querySelector('#settings-statistics'));
-  group('Dostęp operatora',item=>item.matches('.access-panel'));
-  group('Telegram',item=>item.matches('.telegram-settings'));
   group('Powiadomienia',item=>item.matches('.notification-settings'));
   group('Uruchamianie',item=>item.matches('.desktop-settings'));
   application.dataset.settingsGroupsReady='true';
-}function organizeSettingsSections(){const form=document.querySelector('.settings-form');if(!form||form.dataset.sectionsOrganized==='true')return;const sections=[...form.querySelectorAll(':scope > .panel-content > .form-section')];const find=id=>$(id)?.closest('.form-section');const identity=find('settings-callsign'),interfaces=find('interface-forms'),ax25=find('settings-t1'),services=find('settings-welcome'),web=find('settings-web-bind'),application=web;if(!identity||!interfaces||!ax25||!services)return;form.dataset.sectionsOrganized='true';const mark=(section,key,title)=>{section.dataset.settingsKey=key;const heading=section.querySelector(':scope > h3');if(heading)heading.textContent=title;};mark(identity,'station','Stacja');mark(interfaces,'interfaces','Interfejsy TNC');mark(ax25,'ax25','AX.25 i ruch');if(web)mark(web,'application','Aplikacja i WWW');const panelContent=form.querySelector(':scope > .panel-content');const actions=form.querySelector(':scope > .panel-content > .actions');const section=(key,title,kind='form-grid')=>{const value=node('div','form-section');value.dataset.settingsKey=key;value.innerHTML=`<h3>${title}</h3><p class="section-help"></p><div class="${kind}"></div>`;panelContent.insertBefore(value,actions||null);return value;};const messages=section('messages','Komunikaty i komendy','check-grid'),beacon=section('beacon','Beacon','check-grid'),mailbox=section('mailbox','MailBox','check-grid'),yapp=section('yapp','YAPP','check-grid');const telegram=services.querySelector('.telegram-settings'),notifications=services.querySelector('.notification-settings');const formGrid=key=>{const target=key.querySelector('.form-grid');if(target)return target;const value=node('div','form-grid');key.append(value);return value;};const move=(id,target)=>{const value=$(id)?.closest('label');if(value)target.append(value);};['settings-welcome','settings-goodbye','settings-remote'].forEach(id=>move(id,messages));['settings-beacon'].forEach(id=>move(id,beacon));['settings-mailbox'].forEach(id=>move(id,mailbox));['settings-yapp','settings-yapp-auto','settings-yapp-location'].forEach(id=>move(id,yapp));['settings-beacon-seconds','settings-beacon-to'].forEach(id=>move(id,formGrid(beacon)));move('settings-mailbox-call',formGrid(mailbox));move('settings-yapp-dir',formGrid(yapp));const max=node('label','','Limit plików YAPP');const maxInput=node('input');maxInput.id='settings-yapp-max-files';maxInput.type='number';maxInput.min='1';maxInput.max='100000';maxInput.value='1000';max.append(maxInput);formGrid(yapp).append(max);const cleanup=node('label');cleanup.innerHTML='<input id="settings-yapp-cleanup" type="checkbox"> Automatycznie usuwaj najstarsze pliki po osiągnięciu limitu';yapp.append(cleanup);const side=form.querySelector(':scope > .panel-content > .settings-side');const templates=side?.querySelector('#template-select')?.closest('.panel');const access=side?.querySelector('#logout')?.closest('.panel');if(templates)messages.append(templates);if(access&&application)application.append(access);if(telegram&&application)application.append(telegram);if(notifications&&application)application.append(notifications);if(side&&!side.querySelector('.panel'))side.remove();services.remove();collapseApplicationSettings(application);const oldGrids=services.querySelectorAll('.form-grid,.check-grid');oldGrids.forEach(grid=>{if(!grid.children.length)grid.remove();});}
+}function organizeSettingsSections(){const form=document.querySelector('.settings-form');if(!form||form.dataset.sectionsOrganized==='true')return;const sections=[...form.querySelectorAll(':scope > .panel-content > .form-section')];const find=id=>$(id)?.closest('.form-section');const identity=find('settings-callsign'),interfaces=find('interface-forms'),ax25=find('settings-t1'),services=find('settings-welcome'),web=form.querySelector('.form-section[data-settings-key="application"]'),application=web;if(!identity||!interfaces||!ax25||!services)return;form.dataset.sectionsOrganized='true';const mark=(section,key,title)=>{section.dataset.settingsKey=key;const heading=section.querySelector(':scope > h3');if(heading)heading.textContent=title;};mark(identity,'station','Stacja');mark(interfaces,'interfaces','Interfejsy TNC');mark(ax25,'ax25','AX.25 i ruch');if(web)mark(web,'application','Aplikacja');const panelContent=form.querySelector(':scope > .panel-content');const actions=form.querySelector(':scope > .panel-content > .actions');const section=(key,title,kind='form-grid')=>{const value=node('div','form-section');value.dataset.settingsKey=key;value.innerHTML=`<h3>${title}</h3><p class="section-help"></p><div class="${kind}"></div>`;panelContent.insertBefore(value,actions||null);return value;};const messages=section('messages','Komunikaty i komendy','check-grid'),beacon=section('beacon','Beacon','check-grid'),mailbox=section('mailbox','MailBox','check-grid'),yapp=section('yapp','YAPP','check-grid');const notifications=services.querySelector('.notification-settings');const formGrid=key=>{const target=key.querySelector('.form-grid');if(target)return target;const value=node('div','form-grid');key.append(value);return value;};const move=(id,target)=>{const value=$(id)?.closest('label');if(value)target.append(value);};['settings-welcome','settings-goodbye','settings-remote'].forEach(id=>move(id,messages));['settings-beacon'].forEach(id=>move(id,beacon));['settings-mailbox'].forEach(id=>move(id,mailbox));['settings-yapp','settings-yapp-auto','settings-yapp-location'].forEach(id=>move(id,yapp));['settings-beacon-seconds','settings-beacon-to'].forEach(id=>move(id,formGrid(beacon)));move('settings-mailbox-call',formGrid(mailbox));move('settings-yapp-dir',formGrid(yapp));const max=node('label','','Limit plików YAPP');const maxInput=node('input');maxInput.id='settings-yapp-max-files';maxInput.type='number';maxInput.min='1';maxInput.max='100000';maxInput.value='1000';max.append(maxInput);formGrid(yapp).append(max);const cleanup=node('label');cleanup.innerHTML='<input id="settings-yapp-cleanup" type="checkbox"> Automatycznie usuwaj najstarsze pliki po osiągnięciu limitu';yapp.append(cleanup);const side=form.querySelector(':scope > .panel-content > .settings-side');const templates=side?.querySelector('#template-select')?.closest('.panel');const access=side?.querySelector('#logout')?.closest('.panel');if(templates)messages.append(templates);if(access&&application)application.append(access);if(notifications&&application)application.append(notifications);if(side&&!side.querySelector('.panel'))side.remove();services.remove();collapseApplicationSettings(application);const oldGrids=services.querySelectorAll('.form-grid,.check-grid');oldGrids.forEach(grid=>{if(!grid.children.length)grid.remove();});}
 function applySettingsFullWidth(){const form=document.querySelector('.settings-form');const grid=document.querySelector('#view-settings .settings-grid');if(!form||!grid)return;grid.style.display='block';form.style.width='100%';form.querySelector(':scope > .panel-content > .settings-side')?.setAttribute('hidden','');}
 function collapseTemplateSettings(application){
   const panel=application?.querySelector(':scope > .panel');
@@ -629,10 +609,6 @@ function collapseTemplateSettings(application){
   toggle.type='button';
   toggle.setAttribute('aria-expanded','false');
   const body=node('div','interface-body');
-  const help=document.createElement('details');
-  help.className='mqtt-help';
-  help.innerHTML='<summary>Jak skonfigurować MQTT i Home Assistant?</summary><ol><li>MQTT nie wymaga bota. Potrzebny jest broker MQTT, np. Mosquitto albo broker z dodatku Home Assistant.</li><li>W brokerze utwórz użytkownika i hasło dla stacji. Nie używaj konta administratora Home Assistant.</li><li>W polu <b>Broker MQTT</b> wpisz adres osiągalny z Alpine, np. <code>mqtt://192.168.1.20:1883</code>. Dla szyfrowania użyj <code>mqtts://</code> albo zaznacz TLS.</li><li>Wpisz użytkownika, zapisz hasło przyciskiem <b>Zapisz hasło MQTT</b> i włącz MQTT.</li><li>Zaznacz <b>Home Assistant Discovery</b>, jeśli broker jest używany przez Home Assistant. Po restarcie encje stacji pojawią się automatycznie.</li><li>Zapisz ustawienia i zrestartuj aplikację. Publikowane są tylko status aplikacji, stan TNC i lista MHeard.</li></ol><p class="hint">MQTT jest wyłączone domyślnie. Aplikacja nie odbiera poleceń MQTT i nie publikuje treści ramek radiowych.</p>';
-  body.append(help);
   const toggleCard=event=>{if(event.target.closest('button'))return;toggle.click();};
   toggle.onclick=()=>{
     const collapsed=card.classList.toggle('collapsed');
@@ -653,7 +629,7 @@ function ensureSettingsTabs(force=false){const form=document.querySelector('.set
 function selectSettingsTab(index){const form=document.querySelector('.settings-form');if(!form)return;const items=settingsTabItems();if(!items.length)return;closeHelpPopover();const selected=Math.max(0,Math.min(index,items.length-1));const active=Array.isArray(items[selected].element)?items[selected].element: [items[selected].element];const tabs=$('settings-tabs');if(tabs)tabs.dataset.selected=selected;form.querySelectorAll('.form-section[data-settings-key]').forEach(section=>{section.hidden=!active.includes(section);});const isSection=Boolean(items[selected].section);form.querySelector('.actions')?.toggleAttribute('hidden',!isSection);form.querySelector('.advanced-config')?.toggleAttribute('hidden',!isSection);document.querySelectorAll('.settings-tab').forEach((button,i)=>button.classList.toggle('active',i===selected));appendSettingsHelp();}
 function refreshSettingsTabs(){settingsTabItems().forEach((item,index)=>{const button=document.querySelector(`.settings-tab[data-index="${index}"]`);const label=button?.querySelector('.settings-tab-label');if(label)label.textContent=state.catalog[item.key]||item.fallback;});}
 function fixSettingsHeadings(){const keys={station:'settings.station',web:'settings.web',application:'settings.application',interfaces:'settings.interfaces',ax25:'settings.ax25',messages:'settings.messages',beacon:'settings.beacon',mailbox:'settings.mailbox',yapp:'settings.yapp'};ensureSettingsTabs();document.querySelectorAll('.settings-form .form-section[data-settings-key] h3').forEach(heading=>{const key=keys[heading.closest('.form-section').dataset.settingsKey];if(key&&state.catalog[key])heading.textContent=state.catalog[key];});refreshSettingsTabs();decorateSettingsSections();collapseApplicationSettings(document.querySelector('.settings-form .form-section[data-settings-key="application"]'));document.querySelectorAll('#interface-forms > .interface-form').forEach(syncInterfaceTransport);refreshInterfaceToggles();bindAllCardHelp();}
-ensureWebSettings();
+ensureLocalPreferences();
 
 function ensureLocatorField(){if($('settings-locator'))return;const grid=$('settings-callsign')?.closest('.form-grid');if(!grid)return;const label=node('label','', 'Lokator QTH (opcjonalny)');const input=node('input');input.id='settings-locator';input.maxLength=6;input.placeholder='JO92AA';label.replaceChildren(document.createTextNode('Lokator QTH (opcjonalny)'),input);grid.insertBefore(label,$('settings-language')?.closest('label')||null);}
 ensureLocatorField();
@@ -672,10 +648,19 @@ bindAllCardHelp();
 // Web settings are loaded together with the complete settings form. Keeping a
 // second asynchronous loader here could overwrite a user's checkbox change
 // while the form was still being opened.
-async function saveWebConfiguration(){const result=await request('web/save',{body:{bind:$('settings-web-bind')?.value.trim()||'127.0.0.1:8080',token_file:$('settings-web-token-file')?.value.trim()||'',auth_enabled:String(Boolean($('settings-web-auth')?.checked)),presence_mode:$('settings-web-presence')?.value||'auto',presence_bar_enabled:String(Boolean($('settings-presence-bar')?.checked)),absence_profile:$('settings-web-profile')?.value||'2',heartbeat_timeout:$('settings-web-timeout')?.value||'90',statistics_enabled:String(Boolean($('settings-statistics')?.checked))}});state.webDetails={...(state.webDetails||{}),presenceBarEnabled:Boolean($('settings-presence-bar')?.checked),presenceMode:$('settings-web-presence')?.value||state.webDetails?.presenceMode||'auto'};delete $('settings-presence-bar')?.dataset.changed;renderPresenceBar(state.webDetails);return result;}async function poll(){try{const [snapshotResult,webDetailsResult]=await Promise.allSettled([request('state',{method:'GET'}),request('web/details',{method:'GET'})]);if(snapshotResult.status!=='fulfilled')throw snapshotResult.reason;const snapshot=snapshotResult.value;state.snapshot=snapshot;$('server-light').classList.add('online');$('server-state').textContent='Panel połączony';if(webDetailsResult.status==='fulfilled'){state.webDetails=webDetailsResult.value;renderPresenceBar(webDetailsResult.value);}try{if(!activeHelpPopover&&state.view!=='settings')render(snapshot);}catch{} }catch(exception){$('server-light').classList.remove('online');$('server-state').textContent='Łączenie z panelem…';}finally{setTimeout(poll,1500);}}
-async function saveWebConfiguration(){const result=await request('web/save',{body:{bind:$('settings-web-bind')?.value.trim()||'127.0.0.1:8080',token_file:$('settings-web-token-file')?.value.trim()||'',auth_enabled:String(Boolean($('settings-web-auth')?.checked)),presence_mode:$('settings-web-presence')?.value||'auto',presence_bar_enabled:String(Boolean($('settings-presence-bar')?.checked)),absence_profile:$('settings-web-profile')?.value||'2',heartbeat_timeout:$('settings-web-timeout')?.value||'90',statistics_enabled:String(Boolean($('settings-statistics')?.checked)),mqtt_enabled:String(Boolean($('settings-mqtt-enabled')?.checked)),mqtt_broker:$('settings-mqtt-broker')?.value.trim()||'',mqtt_username:$('settings-mqtt-username')?.value.trim()||'',mqtt_tls:String(Boolean($('settings-mqtt-tls')?.checked)),mqtt_client_id:$('settings-mqtt-client-id')?.value.trim()||'ultimatepr-station',mqtt_topic_prefix:$('settings-mqtt-topic-prefix')?.value.trim()||'ultimatepr',mqtt_discovery_topic:$('settings-mqtt-discovery-topic')?.value.trim()||'homeassistant'}});state.webDetails={...(state.webDetails||{}),presenceBarEnabled:Boolean($('settings-presence-bar')?.checked),presenceMode:$('settings-web-presence')?.value||state.webDetails?.presenceMode||'auto'};delete $('settings-presence-bar')?.dataset.changed;renderPresenceBar(state.webDetails);return result;}
-function syncMqttSettings(){const d=state.webDetails,card=$('settings-mqtt-card');if(!$('settings-mqtt-enabled')||!d||card?.dataset.mqttLoaded==='true')return;checked('settings-mqtt-enabled',d.mqttEnabled);field('settings-mqtt-broker',d.mqttBroker||'');field('settings-mqtt-username',d.mqttUsername||'');checked('settings-mqtt-tls',d.mqttTls);field('settings-mqtt-client-id',d.mqttClientId||'ultimatepr-station');field('settings-mqtt-topic-prefix',d.mqttTopicPrefix||'ultimatepr');field('settings-mqtt-discovery-topic',d.mqttDiscoveryTopic||'homeassistant');const status=$('settings-mqtt-password-status');if(status)status.textContent=`Hasło: ${d.mqttPasswordPresent?'zapisane w osobnym pliku':'nieustawione'}`;if(card)card.dataset.mqttLoaded='true';}
-setInterval(syncMqttSettings,500);
+
+async function poll(){
+  try{
+    const [snapshotResult,webDetailsResult]=await Promise.allSettled([request('state',{method:'GET'}),request('web/details',{method:'GET'})]);
+    if(snapshotResult.status!=='fulfilled')throw snapshotResult.reason;
+    const snapshot=snapshotResult.value;state.snapshot=snapshot;
+    $('server-light').classList.add('online');$('server-state').textContent='Panel połączony';
+    if(webDetailsResult.status==='fulfilled'){state.webDetails=webDetailsResult.value;renderPresenceBar(webDetailsResult.value);}
+    try{if(!activeHelpPopover&&state.view!=='settings')render(snapshot);}catch{}
+  }catch(exception){
+    $('server-light').classList.remove('online');$('server-state').textContent='Łączenie z panelem…';
+  }finally{setTimeout(poll,1500);}
+}
 poll();
 syncBuildVersion();
 let heartbeatTimer;
@@ -728,16 +713,11 @@ async function loadFiles(){
 }
 
 // The settings model is kept in one place so every control is serialized identically.
-function telegramFeedback(message,failed=false){const el=$('telegram-feedback');if(!el)return;el.textContent=message;el.hidden=!message;el.classList.toggle('error',failed);}
-function updateTelegramStatus(){const el=$('telegram-status');if(!el)return;const enabled=$('settings-telegram-enabled')?.checked;const chat=$('settings-telegram-chat-id')?.value.trim();el.textContent=!enabled?'Wyłączony':!state.telegramTokenPresent?'Brak tokenu':!chat?'Oczekiwanie na czat':'Skonfigurowany';}
-async function saveTelegramToken(){const token=$('settings-telegram-token')?.value.trim()||'';await request('telegram/token',{body:{token}});telegramFeedback('Token Telegrama zapisany.');state.telegramTokenPresent=Boolean(token);$('settings-telegram-token').value='';updateTelegramStatus();toast(token?'Token Telegrama zapisany.':'Token Telegrama usunięty.');}
-async function discoverTelegramChats(){const chats=await request('telegram/discover');const list=$('telegram-chat-list');list.replaceChildren(new Option('Wybierz wykryty czat',''));(chats||[]).forEach(chat=>list.append(new Option(chat.name+' ('+chat.kind+') · '+chat.id,chat.id)));list.hidden=!(chats||[]).length;if(!chats?.length)throw Error('Nie znaleziono czatów. Wyślij /start do bota i spróbuj ponownie.');telegramFeedback('Wybierz wykryty czat z listy.');toast('Wybierz wykryty czat z listy.');}
-$('settings-telegram-enabled')?.addEventListener('change',updateTelegramStatus);$('settings-telegram-chat-id')?.addEventListener('input',updateTelegramStatus);$('telegram-save-token')?.addEventListener('click',()=>guard(saveTelegramToken,e=>telegramFeedback(e.message||String(e),true)));$('telegram-discover')?.addEventListener('click',()=>guard(discoverTelegramChats,e=>telegramFeedback(e.message||String(e),true)));$('telegram-chat-list')?.addEventListener('change',e=>{if(e.target.value){$('settings-telegram-chat-id').value=e.target.value;updateTelegramStatus();}});$('telegram-test')?.addEventListener('click',()=>guard(async()=>{await request('telegram/test',{body:{chat_id:$('settings-telegram-chat-id').value.trim()}});telegramFeedback('Wiadomość testowa Telegrama została wysłana.');toast('Wiadomość testowa Telegrama została wysłana.');}),e=>telegramFeedback(e.message||String(e),true));
-function settingsConfigText(){const v=id=>$(id)?.value.trim()||'',b=id=>Boolean($(id)?.checked);const notificationLines=["incoming_connection","outgoing_connection","terminal_message","disconnection","mailbox","yapp","tnc","critical"].flatMap(k=>[`notification_${k}_in_app=${notificationSetting(k,'in-app',b(`notification-${k}-in-app`))}`,`notification_${k}_native=${notificationSetting(k,'native',b(`notification-${k}-native`))}`,`notification_${k}_telegram=${notificationSetting(k,'telegram',b(`notification-${k}-telegram`))}`,`notification_${k}_sound=${notificationSetting(k,'sound',v(`notification-${k}-sound`)||0)}`]);const lines=[...notificationLines,`telegram_enabled=${b('settings-telegram-enabled')}`,`telegram_chat_id=${v('settings-telegram-chat-id')}`,`telegram_token_file=telegram.bot-token`,`callsign=${v('settings-callsign')}`,`myname=${v('settings-myname')}`,`locator=${v('settings-locator')}`,`language=${v('settings-language')}`,`welcome_enabled=${b('settings-welcome')}`,`goodbye_enabled=${b('settings-goodbye')}`,`remote_commands=${b('settings-remote')}`,`beacon_enabled=${b('settings-beacon')}`,`beacon_seconds=${Math.round(Number(v('settings-beacon-seconds'))*60)}`,`beacon_to=${v('settings-beacon-to')}`,`digipeat_enabled=${b('settings-digipeat')}`,`t1_ms=${v('settings-t1')}`,`t3_ms=${v('settings-t3')}`,`retries=${v('settings-retries')}`,`paclen=${v('settings-paclen')}`,`accept_incoming=${b('settings-accept')}`,`ax25_autonegotiation=${b('settings-autoneg')}`,`mailbox_enabled=${b('settings-mailbox')}`,`mailbox_callsign=${v('settings-mailbox-call')}`,`yapp_enabled=${b('settings-yapp')}`,`yapp_auto_receive=${b('settings-yapp-auto')}`,`yapp_ask_location=${b('settings-yapp-location')}`,`yapp_download_dir=${v('settings-yapp-dir')}`,`yapp_max_files=${v('settings-yapp-max-files')||1000}`,`yapp_auto_cleanup=${b('settings-yapp-cleanup')}`];document.querySelectorAll('#interface-forms > .interface-form').forEach(card=>{const q=s=>card.querySelector(s),name=q('.if-name')?.value.trim()||'',transport=q('[id^="if-transport"]')?.value||'tcp',endpoint=q('[id^="if-endpoint"]')?.value.trim()||'',baud=q('[id^="if-baud"]')?.value||9600,encoded=transport==='serial'?`serial:${endpoint}@${baud}`:endpoint;lines.push(`interface_${name}=${encoded},${q('[id^="if-port"]')?.value||0},${q('[id^="if-priority"]')?.value||0},${q('.if-enabled')?.checked!==false},${q('[id^="if-description"]')?.value.trim()||''}`);lines.push(`beacon_interface_${name}=${q('.if-beacon')?.checked!==false},${q('.if-path')?.value.trim()||''}`);});return lines.join('\n')+'\n';}
-async function loadSettings(){const [details,templates,webDetails]=await Promise.all([request('config/details'),request('templates'),request('web/details')]);await loadLanguage(details.language);ensureWebSettings();field('settings-web-bind',webDetails.bind);field('settings-web-token-file',webDetails.tokenFile||'');checked('settings-web-auth',webDetails.authEnabled);field('settings-web-presence',webDetails.presenceMode||'auto');field('settings-web-profile',webDetails.absenceProfile||2);field('settings-web-timeout',webDetails.heartbeatTimeout||90);checked('settings-statistics',webDetails.statisticsEnabled);const warning=$('settings-web-warning');if(warning)warning.hidden=bool(webDetails.authEnabled)||String(webDetails.bind||'').startsWith('127.0.0.1:')||String(webDetails.bind||'').startsWith('localhost:');ensureLocatorField();field('settings-callsign',details.callsign);field('settings-myname',details.myname);field('settings-locator',details.locator);field('settings-language',details.language);[['welcome','welcome'],['goodbye','goodbye'],['remoteCommands','remote'],['beacon','beacon'],['digipeat','digipeat'],['accept','accept'],['ax25Autonegotiation','autoneg'],['mailboxEnabled','mailbox'],['yappEnabled','yapp'],['yappAutoReceive','yapp-auto'],['yappAskLocation','yapp-location']].forEach(([key,id])=>checked(`settings-${id}`,details[key]));field('settings-beacon-seconds',Math.max(10,Math.round(Number(details.beaconSeconds||600)/60)));field('settings-beacon-to',details.beaconTo);field('settings-t1',details.t1);field('settings-t3',details.t3);field('settings-retries',details.retries);field('settings-paclen',details.paclen);field('settings-mailbox-call',details.mailboxCall);field('settings-yapp-dir',details.yappDownloadDir);state.telegramTokenPresent=Boolean(details.telegramTokenPresent);field('settings-yapp-max-files',details.yappMaxFiles||1000);checked('settings-yapp-cleanup',details.yappAutoCleanup);checked('settings-telegram-enabled',details.telegramEnabled);field('settings-telegram-chat-id',details.telegramChatId||'');updateTelegramStatus();(details.notifications||[]).forEach(item=>{checked(`notification-${item.kind}-in-app`,item.inApp);checked(`notification-${item.kind}-native`,item.native);checked(`notification-${item.kind}-telegram`,item.telegram);field(`notification-${item.kind}-sound`,item.sound);});updateModuleNotificationState();renderInterfaceForms(details.interfaces);state.templates=templates;$('template-text').value=templates[Number($('template-select').value)]||'';$('config-text').value=settingsConfigText();state.configText=$('config-text').value;}
+function settingsConfigText(){const v=id=>$(id)?.value.trim()||'',b=id=>Boolean($(id)?.checked);const notificationLines=["incoming_connection","outgoing_connection","terminal_message","disconnection","mailbox","yapp","tnc","critical"].flatMap(k=>[`notification_${k}_in_app=${notificationSetting(k,'in-app',b(`notification-${k}-in-app`))}`,`notification_${k}_native=${notificationSetting(k,'native',b(`notification-${k}-native`))}`,`notification_${k}_sound=${notificationSetting(k,'sound',v(`notification-${k}-sound`)||0)}`]);const lines=[...notificationLines,`callsign=${v('settings-callsign')}`,`myname=${v('settings-myname')}`,`locator=${v('settings-locator')}`,`language=${v('settings-language')}`,`welcome_enabled=${b('settings-welcome')}`,`goodbye_enabled=${b('settings-goodbye')}`,`remote_commands=${b('settings-remote')}`,`beacon_enabled=${b('settings-beacon')}`,`beacon_seconds=${Math.round(Number(v('settings-beacon-seconds'))*60)}`,`beacon_to=${v('settings-beacon-to')}`,`digipeat_enabled=${b('settings-digipeat')}`,`t1_ms=${v('settings-t1')}`,`t3_ms=${v('settings-t3')}`,`retries=${v('settings-retries')}`,`paclen=${v('settings-paclen')}`,`accept_incoming=${b('settings-accept')}`,`ax25_autonegotiation=${b('settings-autoneg')}`,`mailbox_enabled=${b('settings-mailbox')}`,`mailbox_callsign=${v('settings-mailbox-call')}`,`yapp_enabled=${b('settings-yapp')}`,`yapp_auto_receive=${b('settings-yapp-auto')}`,`yapp_ask_location=${b('settings-yapp-location')}`,`yapp_download_dir=${v('settings-yapp-dir')}`,`yapp_max_files=${v('settings-yapp-max-files')||1000}`,`yapp_auto_cleanup=${b('settings-yapp-cleanup')}`];document.querySelectorAll('#interface-forms > .interface-form').forEach(card=>{const q=s=>card.querySelector(s),name=q('.if-name')?.value.trim()||'',transport=q('[id^="if-transport"]')?.value||'tcp',endpoint=q('[id^="if-endpoint"]')?.value.trim()||'',baud=q('[id^="if-baud"]')?.value||9600,encoded=transport==='serial'?`serial:${endpoint}@${baud}`:endpoint;lines.push(`interface_${name}=${encoded},${q('[id^="if-port"]')?.value||0},${q('[id^="if-priority"]')?.value||0},${q('.if-enabled')?.checked!==false},${q('[id^="if-description"]')?.value.trim()||''}`);lines.push(`beacon_interface_${name}=${q('.if-beacon')?.checked!==false},${q('.if-path')?.value.trim()||''}`);});return lines.join('\n')+'\n';}
+async function loadSettings(){const [details,templates,webDetails]=await Promise.all([request('config/details'),request('templates'),request('web/details')]);await loadLanguage(details.language);ensureLocalPreferences();checked('settings-statistics',webDetails.statisticsEnabled);const warning=$('settings-web-warning');if(warning)warning.hidden=bool(webDetails.authEnabled)||String(webDetails.bind||'').startsWith('127.0.0.1:')||String(webDetails.bind||'').startsWith('localhost:');ensureLocatorField();field('settings-callsign',details.callsign);field('settings-myname',details.myname);field('settings-locator',details.locator);field('settings-language',details.language);[['welcome','welcome'],['goodbye','goodbye'],['remoteCommands','remote'],['beacon','beacon'],['digipeat','digipeat'],['accept','accept'],['ax25Autonegotiation','autoneg'],['mailboxEnabled','mailbox'],['yappEnabled','yapp'],['yappAutoReceive','yapp-auto'],['yappAskLocation','yapp-location']].forEach(([key,id])=>checked(`settings-${id}`,details[key]));field('settings-beacon-seconds',Math.max(10,Math.round(Number(details.beaconSeconds||600)/60)));field('settings-beacon-to',details.beaconTo);field('settings-t1',details.t1);field('settings-t3',details.t3);field('settings-retries',details.retries);field('settings-paclen',details.paclen);field('settings-mailbox-call',details.mailboxCall);field('settings-yapp-dir',details.yappDownloadDir);field('settings-yapp-max-files',details.yappMaxFiles||1000);checked('settings-yapp-cleanup',details.yappAutoCleanup);(details.notifications||[]).forEach(item=>{checked(`notification-${item.kind}-in-app`,item.inApp);checked(`notification-${item.kind}-native`,item.native);checked(`notification-${item.kind}-telegram`,item.telegram);field(`notification-${item.kind}-sound`,item.sound);});updateModuleNotificationState();renderInterfaceForms(details.interfaces);state.templates=templates;$('template-text').value=templates[Number($('template-select').value)]||'';$('config-text').value=settingsConfigText();state.configText=$('config-text').value;}
 function validateSettings(){const locator=v=>$(v)?.value.trim()||'',beaconMinutes=Number(locator('settings-beacon-seconds'));if(!Number.isInteger(beaconMinutes)||beaconMinutes<10||beaconMinutes>1440)throw settingsError('Interwał beaconu musi wynosić od 10 do 1440 minut.',$('settings-beacon-seconds'));if(locator('settings-locator')&&!/^[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?$/.test(locator('settings-locator')))throw settingsError('Lokator QTH musi mieć format Maidenhead, np. JO92AA.',$('settings-locator'));const cards=[...document.querySelectorAll('#interface-forms > .interface-form')],names=[];if(cards.length>10)throw settingsError('Można skonfigurować maksymalnie 10 interfejsów TNC.',cards[10]?.querySelector('.if-name'));for(const card of cards){const name=card.querySelector('.if-name'),transport=card.querySelector('.if-transport'),endpoint=card.querySelector('.if-endpoint'),baud=card.querySelector('.if-baud'),port=card.querySelector('.if-port'),priority=card.querySelector('.if-priority'),nameValue=name?.value.trim()||'';if(!/^[A-Za-z0-9_]{1,16}$/.test(nameValue))throw settingsError('Nazwa interfejsu musi mieć 1-16 znaków ASCII: litery, cyfry lub _.',name);if(names.includes(nameValue))throw settingsError('Nazwy interfejsów TNC muszą być unikalne.',name);names.push(nameValue);const endpointValue=endpoint?.value.trim()||'';if(transport?.value==='serial'){if(!endpointValue||(!/^COM[0-9]+$/i.test(endpointValue)&&!/^\/dev\/[^\s]+$/.test(endpointValue)))throw settingsError('Podaj poprawne urządzenie szeregowe, np. COM3 lub /dev/ttyUSB0.',endpoint);const baudValue=Number(baud?.value);if(![1200,2400,4800,9600,19200,38400,57600,115200].includes(baudValue))throw settingsError('Wybierz obsługiwaną prędkość portu szeregowego.',baud);}else{const match=endpointValue.match(/^(.+):([0-9]+)$/);if(!match||Number(match[2])<1||Number(match[2])>65535)throw settingsError('Adres TCP/IP musi mieć format host:port.',endpoint);}const kissPort=Number(port?.value);if(!Number.isInteger(kissPort)||kissPort<0||kissPort>15)throw settingsError('Port KISS musi mieć wartość od 0 do 15.',port);const interfacePriority=Number(priority?.value);if(!Number.isInteger(interfacePriority)||interfacePriority<0||interfacePriority>255)throw settingsError('Priorytet interfejsu musi mieć wartość od 0 do 255.',priority);}}
 
-function importConfigForm(text){const values=new Map(),interfaces=[],profiles=new Map();for(const raw of text.split(/\r?\n/)){const line=raw.trim();if(!line||line.startsWith('#'))continue;const [key,...rest]=line.split('=');const value=rest.join('=');if(key.startsWith('interface_')){const parts=value.split(',',5),endpoint=parts[0]||'',serial=endpoint.startsWith('serial:'),match=serial?endpoint.slice(7).match(/^(.*)@(\d+)$/):null;interfaces.push({name:key.slice(10),description:parts[4]||'',endpoint:match?match[1]:endpoint,transport:serial?'serial':'tcp',baud:match?Number(match[2]):9600,port:Number(parts[1]||0),priority:Number(parts[2]||0),enabled:parts[3]!=='false'});}else if(key.startsWith('beacon_interface_')){const [enabled,...route]=value.split(',');profiles.set(key.slice(17),{beaconEnabled:enabled==='true',beaconPath:route.join(',').trim()});}else values.set(key,value);}interfaces.forEach(item=>Object.assign(item,profiles.get(item.name)||{}));const set=(id,key)=>field(id,values.get(key));ensureLocatorField();set('settings-callsign','callsign');set('settings-myname','myname');set('settings-locator','locator');set('settings-language','language');set('settings-t1','t1_ms');set('settings-t3','t3_ms');set('settings-retries','retries');set('settings-paclen','paclen');set('settings-beacon-seconds','beacon_seconds');field('settings-beacon-seconds',Math.max(10,Math.round(Number($('settings-beacon-seconds').value||600)/60)));set('settings-beacon-to','beacon_to');set('settings-mailbox-call','mailbox_callsign');set('settings-yapp-dir','yapp_download_dir');set('settings-yapp-max-files','yapp_max_files');checked('settings-yapp-cleanup',values.get('yapp_auto_cleanup')==='true');checked('settings-telegram-enabled',values.get('telegram_enabled')==='true');set('settings-telegram-chat-id','telegram_chat_id');updateTelegramStatus();['incoming_connection','outgoing_connection','terminal_message','disconnection','mailbox','yapp','tnc','critical'].forEach(k=>{checked(`notification-${k}-in-app`,values.get(`notification_${k}_in_app`)==='true');checked(`notification-${k}-native`,values.get(`notification_${k}_native`)!=='false');checked(`notification-${k}-telegram`,values.get(`notification_${k}_telegram`)==='true');field(`notification-${k}-sound`,values.get(`notification_${k}_sound`)||0);});[['welcome','welcome_enabled'],['goodbye','goodbye_enabled'],['remote','remote_commands'],['beacon','beacon_enabled'],['digipeat','digipeat_enabled'],['accept','accept_incoming'],['autoneg','ax25_autonegotiation'],['mailbox','mailbox_enabled'],['yapp','yapp_enabled'],['yapp-auto','yapp_auto_receive'],['yapp-location','yapp_ask_location']].forEach(([id,key])=>checked(`settings-${id}`,values.get(key)==='true'));renderInterfaceForms(interfaces);}
+function importConfigForm(text){const values=new Map(),interfaces=[],profiles=new Map();for(const raw of text.split(/\r?\n/)){const line=raw.trim();if(!line||line.startsWith('#'))continue;const [key,...rest]=line.split('=');const value=rest.join('=');if(key.startsWith('interface_')){const parts=value.split(',',5),endpoint=parts[0]||'',serial=endpoint.startsWith('serial:'),match=serial?endpoint.slice(7).match(/^(.*)@(\d+)$/):null;interfaces.push({name:key.slice(10),description:parts[4]||'',endpoint:match?match[1]:endpoint,transport:serial?'serial':'tcp',baud:match?Number(match[2]):9600,port:Number(parts[1]||0),priority:Number(parts[2]||0),enabled:parts[3]!=='false'});}else if(key.startsWith('beacon_interface_')){const [enabled,...route]=value.split(',');profiles.set(key.slice(17),{beaconEnabled:enabled==='true',beaconPath:route.join(',').trim()});}else values.set(key,value);}interfaces.forEach(item=>Object.assign(item,profiles.get(item.name)||{}));const set=(id,key)=>field(id,values.get(key));ensureLocatorField();set('settings-callsign','callsign');set('settings-myname','myname');set('settings-locator','locator');set('settings-language','language');set('settings-t1','t1_ms');set('settings-t3','t3_ms');set('settings-retries','retries');set('settings-paclen','paclen');set('settings-beacon-seconds','beacon_seconds');field('settings-beacon-seconds',Math.max(10,Math.round(Number($('settings-beacon-seconds').value||600)/60)));set('settings-beacon-to','beacon_to');set('settings-mailbox-call','mailbox_callsign');set('settings-yapp-dir','yapp_download_dir');set('settings-yapp-max-files','yapp_max_files');checked('settings-yapp-cleanup',values.get('yapp_auto_cleanup')==='true');['incoming_connection','outgoing_connection','terminal_message','disconnection','mailbox','yapp','tnc','critical'].forEach(k=>{checked(`notification-${k}-in-app`,values.get(`notification_${k}_in_app`)==='true');checked(`notification-${k}-native`,values.get(`notification_${k}_native`)!=='false');field(`notification-${k}-sound`,values.get(`notification_${k}_sound`)||0);});[['welcome','welcome_enabled'],['goodbye','goodbye_enabled'],['remote','remote_commands'],['beacon','beacon_enabled'],['digipeat','digipeat_enabled'],['accept','accept_incoming'],['autoneg','ax25_autonegotiation'],['mailbox','mailbox_enabled'],['yapp','yapp_enabled'],['yapp-auto','yapp_auto_receive'],['yapp-location','yapp_ask_location']].forEach(([id,key])=>checked(`settings-${id}`,values.get(key)==='true'));renderInterfaceForms(interfaces);}
 
 Object.assign(staticTranslations,{
   'Serwer WWW i logowanie':'Web server and login',
@@ -790,11 +770,7 @@ sanitizePublicExamples();
 new MutationObserver(sanitizePublicExamples).observe(document.body,{childList:true,subtree:true});
 
 async function testNotificationChannel(channel){
-  if(channel==='telegram'){
-    await request('telegram/test',{body:{chat_id:$('settings-telegram-chat-id')?.value.trim()||''}});
-    toast('Testowa wiadomość Telegrama została wysłana.');
-    return;
-  }
+
   if(channel==='sound'&&!window.__UPR_DESKTOP__){playNotificationSound(1);toast('Test dźwięku w przeglądarce wykonany.');return;}
   await request('notifications/test',{body:{channel}});
   if(channel==='in-app'){
@@ -809,19 +785,16 @@ async function testNotificationChannel(channel){
 function normalizeNotificationLabels(){
   const section=document.querySelector('.notification-settings');
   if(!section)return;
-  ensureNotificationVolumeControl(section);
   const description=section.querySelector(':scope > .hint');
-  if(description)description.textContent=settingsDesktopRuntime()
-    ?(state.language==='en'?'Choose notification center, system notifications and sound for each event.':'Wybierz centrum powiadomień, dymki systemowe i dźwięk dla każdego zdarzenia.')
-    :(state.language==='en'?'Choose notification center, Telegram and sound for each event. Browser audio requires audio to be unlocked.':'Wybierz centrum powiadomień, Telegram i dźwięk dla każdego zdarzenia. Dźwięk w przeglądarce wymaga odblokowania audio.');
+  if(description)description.textContent=(state.language==='en'?'Choose notification center, system notifications and sound for each event.':'Wybierz centrum powiadomień, dymki systemowe i dźwięk dla każdego zdarzenia.');
   const heading=section.querySelector(':scope > h3');
   if(heading&&!heading.querySelector('.notification-test-hint')){
     const hint=node('span','hint-inline',' (kliknięcie nazwy kanału wysyła test)');
     hint.className='hint-inline notification-test-hint';
     heading.append(hint);
   }
-  const labels=state.language==='en'?['Notification center','System notification','Telegram','Sound']:['Centrum powiadomień','Dymek','Telegram','Dźwięk'];
-  const channels=['in-app','native','telegram','sound'];
+  const labels=state.language==='en'?['Notification center','System notification','Sound']:['Centrum powiadomień','Dymek','Dźwięk'];
+  const channels=['in-app','native','sound'];
   section.querySelectorAll('.notification-table th').forEach((header,index)=>{
     if(index===0||!labels[index-1])return;
     let button=header.querySelector('.notification-channel-test');
@@ -834,158 +807,16 @@ function normalizeNotificationLabels(){
     button.textContent=labels[index-1];
   });
 }
-function ensureNotificationVolumeControl(section){
-  let control=$('notification-volume-control');
-  if(window.__UPR_DESKTOP__){if(control)control.hidden=true;return;}
-  if(!control){
-    control=node('div','notification-volume-control');control.id='notification-volume-control';
-    const copy=node('div','notification-volume-copy'),label=node('label'),hint=node('p','hint');
-    label.htmlFor='notification-volume';label.id='notification-volume-label';
-    hint.id='notification-volume-hint';copy.append(label,hint);
-    const actions=node('div','notification-volume-actions'),slider=node('input'),value=node('output');
-    slider.id='notification-volume';slider.type='range';slider.min='0';slider.max='100';slider.step='1';
-    slider.setAttribute('aria-describedby',hint.id);value.id='notification-volume-value';value.htmlFor=slider.id;
-    slider.addEventListener('input',()=>{
-      notificationVolume=Number(slider.value);
-      try{localStorage.setItem(notificationVolumeKey,String(notificationVolume));}catch{}
-      ensureNotificationVolumeControl(section);
-    });
-    const test=button('',()=>playNotificationSound(1),'button secondary small');test.id='notification-volume-test';
-    actions.append(slider,value,test);control.append(copy,actions);section.append(control);
-  }
-  control.hidden=false;
-  const pl=state.language==='pl';
-  $('notification-volume-label').textContent=pl?'Głośność powiadomień w przeglądarce':'Browser notification volume';
-  $('notification-volume-hint').textContent=pl?'Zapisywane automatycznie tylko w tej przeglądarce. 0% wycisza dźwięk.':'Saved automatically in this browser only. 0% mutes sound.';
-  $('notification-volume').value=notificationVolume;
-  $('notification-volume-value').textContent=`${notificationVolume}%`;
-  $('notification-volume').setAttribute('aria-valuetext',notificationVolume===0?(pl?'Wyciszone':'Muted'):`${notificationVolume}%`);
-  const test=$('notification-volume-test');test.textContent=pl?'Odtwórz test':'Play test';
-  test.disabled=!window.AudioContext||notificationVolume===0;
-}
+
 normalizeNotificationLabels();
 setInterval(normalizeNotificationLabels,1000);
 
-function ensureMqttSettingsPanel(){
-  const web=document.querySelector('.settings-form .form-section[data-settings-key="web"]');
-  if(!web||$('settings-mqtt-card'))return;
-  const card=node('div','interface-form settings-collapsible collapsed');card.id='settings-mqtt-card';
-  const header=node('div','section-title'),strong=node('strong','', 'MQTT'),toggle=node('button','text-button interface-toggle',interfaceToggleText(false));
-  toggle.type='button';toggle.setAttribute('aria-expanded','false');
-  const body=node('div','interface-body');
-  body.innerHTML='<p class="section-help">Publikuje wyłącznie żywotność aplikacji, stan interfejsów TNC i listę MHeard. MQTT jest wyłączone domyślnie. Po zmianie ustawień wymagany jest restart aplikacji.</p><div class="form-grid"><label><input id="settings-mqtt-enabled" type="checkbox"> Włącz MQTT</label><label>Broker MQTT<input id="settings-mqtt-broker" placeholder="mqtt://adres:1883" maxlength="256"></label><label>Użytkownik (opcjonalnie)<input id="settings-mqtt-username" maxlength="128"></label><label>Identyfikator klienta<input id="settings-mqtt-client-id" maxlength="128" placeholder="ultimatepr-station"></label><label>Prefiks tematów<input id="settings-mqtt-topic-prefix" maxlength="128" placeholder="ultimatepr"></label><label>Temat Discovery<input id="settings-mqtt-discovery-topic" maxlength="128" placeholder="homeassistant"></label><label><input id="settings-mqtt-tls" type="checkbox"> TLS (mqtts)</label></div><div class="actions"><input id="settings-mqtt-password" type="password" autocomplete="new-password" maxlength="256" placeholder="hasło nie jest zapisywane w web.conf"><button id="settings-mqtt-password-save" type="button" class="button secondary small">Zapisz hasło MQTT</button><small id="settings-mqtt-password-status" class="hint">Hasło: nieustawione</small></div><div class="actions mqtt-discovery-actions"><button id="settings-mqtt-discovery-send" type="button" class="button secondary small">Wyślij Home Assistant Discovery</button><small class="hint">Wysyła konfigurację encji jednorazowo na żądanie.</small></div>';
-  const toggleCard=event=>{if(event.target.closest('button'))return;toggle.click();};
-  toggle.onclick=()=>{const collapsed=card.classList.toggle('collapsed');toggle.textContent=interfaceToggleText(!collapsed);toggle.setAttribute('aria-expanded',String(!collapsed));};
-  header.addEventListener('click',toggleCard);header.append(strong,toggle);card.append(header,body);web.append(card);appendCardHelp(card,'mqtt');
-  $('settings-mqtt-password-save').onclick=()=>guard(async()=>{const password=$('settings-mqtt-password').value;await request('mqtt/password',{body:{password}});$('settings-mqtt-password').value='';const present=Boolean(password);$('settings-mqtt-password-status').textContent=`Hasło: ${present?'zapisane w osobnym pliku':'nieustawione'}`;state.webDetails={...(state.webDetails||{}),mqttPasswordPresent:present};toast(present?'Hasło MQTT zapisane.':'Hasło MQTT usunięte.');});
-  $('settings-mqtt-discovery-send').onclick=()=>guard(async()=>{await request('mqtt/discovery');toast('Home Assistant Discovery wysłane.');});
-}
-let updateStatusTimer=null;
-let updateStatusRequest=null;
-let updateStatusLast=null;
-function ensureUpdateSettingsPanel(){
-  const web=document.querySelector('.settings-form .form-section[data-settings-key="web"]');
-  if(!web)return;
-  const existing=$('settings-update-card');
-  if(existing){
-    // Keep this card at the WWW-section level. This repairs older sessions
-    // where a repeated layout pass placed it inside another collapsible card.
-    if(existing.parentElement!==web)web.append(existing);
-    return;
-  }
-  const card=node('div','interface-form settings-collapsible');
-  card.id='settings-update-card';
-  card.classList.add('collapsed');
-  const header=node('div','section-title');
-  const strong=node('strong','', 'Aktualizacja');
-  const toggle=node('button','text-button interface-toggle',interfaceToggleText(false));
-  toggle.type='button';
-  toggle.setAttribute('aria-expanded','false');
-  const body=node('div','interface-body');
-  body.innerHTML='<p class="section-help">Wybierz paczkę ZIP przygotowaną dla Alpine. Instalacja zatrzyma usługę, sprawdzi paczkę i uruchomi ją ponownie.</p><p class="hint update-version" id="settings-update-version">Obecna wersja: sprawdzanie… <button id="settings-update-version-check" type="button" class="button secondary small">Sprawdź wersję</button></p><div class="actions"><button id="settings-update-choose" type="button" class="button secondary">Wybierz ZIP</button><button id="settings-update-install" type="button" class="button primary" disabled>Zainstaluj aktualizację</button><input id="settings-update-file" type="file" accept=".zip" hidden></div><p id="settings-update-file-info" class="hint">Nie wybrano paczki.</p><pre id="settings-update-terminal" class="update-terminal" role="status" aria-live="polite">Status aktualizacji: nie sprawdzono.</pre>';
-  const toggleCard=event=>{if(event.target.closest('button'))return;toggle.click();};
-  toggle.onclick=()=>{
-    const collapsed=card.classList.toggle('collapsed');
-    toggle.textContent=interfaceToggleText(!collapsed);
-    toggle.setAttribute('aria-expanded',String(!collapsed));
-    if(!collapsed){scrollExpandedSettingsCard(card);window.refreshUpdateStatus?.();}
-  };
-  header.addEventListener('click',toggleCard);
-  header.append(strong,toggle);
-  card.append(header,body);
-  web.append(card);
-  const file=$('settings-update-file'),choose=$('settings-update-choose'),install=$('settings-update-install');
-  const info=$('settings-update-file-info'),terminal=$('settings-update-terminal'),versionInfo=$('settings-update-version'),versionCheck=$('settings-update-version-check');
-  const refreshUpdateVersion=async()=>{
-    if(!versionInfo)return;
-    try{
-      const result=await request('build-info',{method:'GET'});
-      versionInfo.firstChild.textContent=`Obecna wersja: ${result?.version||'nieznana'} `;
-    }catch{versionInfo.firstChild.textContent='Obecna wersja: niedostępna ';}
-  };
-  versionCheck?.addEventListener('click',refreshUpdateVersion);
-  refreshUpdateVersion();
-  const renderUpdateStatus=status=>{
-    if(!status||!terminal)return;
-    updateStatusLast=status;
-    const stateName=status.state||'idle';
-    const version=status.version||'—';
-    terminal.textContent=`Stan: ${stateName}\nWersja: ${version}\n${status.log||'Brak statusu.'}`;
-    if(stateName==='completed'||stateName==='failed'||stateName==='rolled-back'){
-      if(updateStatusTimer){clearInterval(updateStatusTimer);updateStatusTimer=null;}
-    }
-  };
-  window.refreshUpdateStatus=async()=>{
-    if(updateStatusRequest)return updateStatusRequest;
-    updateStatusRequest=(async()=>{
-      try{
-        renderUpdateStatus(await request('update/status',{method:'GET'}));
-      }catch(exception){
-        if(terminal){
-          const prefix=updateStatusLast?'Status chwilowo niedostępny — usługa może być restartowana.':'Nie można jeszcze pobrać statusu aktualizacji.';
-          terminal.textContent=`${prefix}\nPonawiam sprawdzanie…`;
-        }
-      }finally{updateStatusRequest=null;}
-    })();
-    return updateStatusRequest;
-  };
-  const startStatusPolling=()=>{
-    if(updateStatusTimer)clearInterval(updateStatusTimer);
-    updateStatusTimer=setInterval(()=>window.refreshUpdateStatus?.(),2000);
-    window.refreshUpdateStatus?.();
-  };
-  choose.onclick=()=>file.click();
-  file.onchange=()=>guard(async()=>{
-    const selected=file.files?.[0];
-    if(!selected)return;
-    choose.disabled=true;install.disabled=true;
-    info.textContent=`Wybrano: ${selected.name} · ${Math.ceil(selected.size/1024)} KiB`;
-    try{
-      const result=await request('update/upload',{raw:selected});
-      install.disabled=false;
-      renderUpdateStatus({state:'uploaded',version:'—',log:`Paczka przesłana. SHA-256: ${result.sha256||'brak'}`});
-      toast('Paczka aktualizacji przesłana.');
-    }finally{choose.disabled=false;file.value='';}
-  });
-  install.onclick=()=>guard(async()=>{
-    if(!window.confirm('Zainstalować wybraną paczkę? Usługa zostanie chwilowo zatrzymana.'))return;
-    install.disabled=true;
-    await request('update/install',{body:{confirm:'yes'}});
-    renderUpdateStatus({state:'running',version:'—',log:'Uruchomiono aktualizację…'});
-    startStatusPolling();
-  });
-}
-
 // Split the existing combined settings section without changing any field ids or config keys.
-function splitApplicationAndWebSettings(){
+function organizeApplicationSettings(){
   const form=document.querySelector('.settings-form');
   const web=form?.querySelector('.form-section[data-settings-key="application"]');
   if(!form||!web||form.dataset.applicationWebSplit==='true')return;
-  web.dataset.settingsKey='web';
-  const heading=web.querySelector(':scope > h3');
-  if(heading)heading.textContent='WWW';
-  const help=web.querySelector(':scope > .section-help');
-  if(help)help.textContent='Panel WWW, dostęp operatora i ustawienia serwera.';
+  web.dataset.settingsKey='local-preferences';
 
   const notifications=node('div','form-section');
   notifications.dataset.settingsKey='notifications';
@@ -993,14 +824,16 @@ function splitApplicationAndWebSettings(){
   web.parentElement.insertBefore(notifications,web);
 
   [...web.querySelectorAll(':scope > .settings-collapsible')].forEach(card=>{
-    if(card.querySelector('.telegram-settings,.notification-settings'))notifications.append(card);
+    if(card.querySelector('.notification-settings'))notifications.append(card);
   });
   const application=node('div','form-section');
   application.dataset.settingsKey='application';
   application.hidden=true;
   application.innerHTML='<h3>Aplikacja</h3><p class="section-help"></p><div class="desktop-settings"><label><input id="settings-desktop-autostart" type="checkbox" disabled> <span id="settings-desktop-autostart-label">Uruchamiaj UPR Terminal po zalogowaniu</span></label><p class="hint" id="settings-desktop-autostart-hint">Zmiana zapisywana automatycznie.</p></div>';
   web.parentElement.insertBefore(application,web);
+  [...web.querySelectorAll(':scope > .settings-collapsible')].forEach(card=>application.append(card));
   collapseApplicationSettings(application);
+  web.remove();
   $('settings-desktop-autostart').onchange=()=>guard(async()=>{
     const control=$('settings-desktop-autostart'),previous=!control.checked;
     control.disabled=true;
@@ -1025,27 +858,25 @@ function settingsTabItemsSeparated(){
   return order.map(type=>{
     const element=sections.find(section=>section.dataset.settingsKey===type);
     if(!element)return null;
-    if(type==='application'&&!settingsDesktopRuntime())return null;
-    if(type==='web'&&(settingsDesktopRuntime()||state.webDetails?.webPanel===false))return null;
+    if(type==='web')return null;
     const [key,fallback]=labels[type];
-    return {element,key,fallback,section:type!=='application'};
+    return {element,key,fallback,section:true};
   }).filter(Boolean);
 }
 
 settingsTabItems=settingsTabItemsSeparated;
 staticTranslations['Uruchamianie']='Startup';
-helpDescriptions.notifications={pl:{title:'Powiadomienia',summary:'Kanały i dźwięki powiadomień.',items:['UPR Terminal udostępnia dymki systemowe.','UPR Station udostępnia Telegram i dźwięk w przeglądarce.']},en:{title:'Notifications',summary:'Notification channels and sounds.',items:['UPR Terminal provides system notifications.','UPR Station provides Telegram and browser audio.']}};
+helpDescriptions.notifications={pl:{title:'Powiadomienia',summary:'Kanały i dźwięki powiadomień.',items:['UPR Terminal udostępnia dymki systemowe.','Dźwięk jest odtwarzany przez natywną aplikację.']},en:{title:'Notifications',summary:'Notification channels and sounds.',items:['UPR Terminal provides system notifications.','Sound is played by the native application.']}};
 helpDescriptions.application={pl:{title:'Aplikacja',summary:'Ustawienia UPR Terminal.',items:['Autostart uruchamia terminal po zalogowaniu do systemu.','Zmiana autostartu jest zapisywana automatycznie, bez restartu.']},en:{title:'Application',summary:'UPR Terminal settings.',items:['Autostart launches the terminal after signing in to the system.','Autostart changes are saved automatically, without restarting.']}};
-helpDescriptions.web={pl:{title:'WWW',summary:'Panel WWW, dostęp operatora i ustawienia serwera.',items:['Desktop korzysta z lokalnego, dynamicznie wybranego portu.','Wariant server używa skonfigurowanego adresu, domyślnie portu 8080.','Ustawienia obecności i heartbeat dotyczą komunikacji panelu z backendem.']},en:{title:'Web',summary:'Web panel, operator access and server settings.',items:['Desktop uses a local dynamically selected port.','The server variant uses the configured address, port 8080 by default.','Presence and heartbeat settings control panel-to-backend communication.']}};
-helpDescriptions.mqtt={pl:{title:'MQTT',summary:'Bezpieczna publikacja statusu stacji do brokera MQTT.',items:['MQTT nie wymaga bota — potrzebny jest broker, np. Mosquitto lub broker Home Assistant.','Włącz MQTT dopiero po wpisaniu adresu brokera oraz opcjonalnych danych użytkownika.','Przycisk „Wyślij Home Assistant Discovery” publikuje konfigurację encji jednorazowo; po zmianie prefiksu lub znaku stacji użyj go ponownie.','Aplikacja publikuje tylko status aplikacji, TNC i MHeard; nie odbiera poleceń MQTT.']},en:{title:'MQTT',summary:'Secure publication of station status to an MQTT broker.',items:['MQTT does not use a bot — it requires a broker such as Mosquitto or a Home Assistant broker.','Enable MQTT after entering the broker address and optional credentials.','The “Send Home Assistant Discovery” button publishes entity configuration once; use it again after changing the prefix or station callsign.','The application publishes only application status, TNC and MHeard; it does not accept MQTT commands.']}};
-splitApplicationAndWebSettings();
-ensureMqttSettingsPanel();
-ensureUpdateSettingsPanel();
+organizeApplicationSettings();
+
+
 ensureSettingsTabs(true);
 staticTranslations['Przechowywanie historii statystyk']='Statistics history retention';staticTranslations['Ciągły']='Continuous';staticTranslations['7 dni']='7 days';staticTranslations['30 dni']='30 days';staticTranslations['90 dni']='90 days';staticTranslations['365 dni']='365 days';
 
-const saveWebConfigurationBase=saveWebConfiguration;
-saveWebConfiguration=async function(){const result=await saveWebConfigurationBase();const retention=$('settings-statistics-retention');if(retention){await request('web/save',{body:{bind:$('settings-web-bind')?.value.trim()||'127.0.0.1:8080',token_file:$('settings-web-token-file')?.value.trim()||'',statistics_enabled:String(Boolean($('settings-statistics')?.checked)),statistics_retention_days:retention.value||'continuous'}});}return result;};
+async function saveLocalPreferences(){
+  return request('preferences/save',{body:{statistics_enabled:String(Boolean($('settings-statistics')?.checked)),statistics_retention_days:$('settings-statistics-retention')?.value||'continuous'}});
+}
 
 function syncSettingsRuntime(){
   const form=document.querySelector('.settings-form');
@@ -1055,14 +886,8 @@ function syncSettingsRuntime(){
   form.dataset.settingsRuntime=runtime;
   ensureSettingsTabs(true);
 }
-function settingsDesktopRuntime(){return Boolean(window.__UPR_DESKTOP__)||state.webDetails?.runtime==='desktop';}
+function settingsDesktopRuntime(){return true;}
 function syncNotificationChannels(){
-  const desktop=settingsDesktopRuntime();
-  document.querySelectorAll('.notification-table tr').forEach(row=>{
-    if(row.children[2])row.children[2].hidden=!desktop;
-    if(row.children[3])row.children[3].hidden=desktop;
-  });
-  document.querySelector('.telegram-settings')?.closest('.settings-collapsible')?.toggleAttribute('hidden',desktop);
   const heading=document.querySelector('.form-section[data-settings-key="notifications"] > h3');
   if(heading)heading.textContent=state.catalog['settings.notifications']||(state.language==='en'?'Notifications':'Powiadomienia');
   const label=$('settings-desktop-autostart-label'),hint=$('settings-desktop-autostart-hint');
@@ -1070,7 +895,6 @@ function syncNotificationChannels(){
   if(hint)hint.textContent=state.language==='en'?'Saved automatically.':'Zmiana zapisywana automatycznie.';
 }
 async function loadDesktopApplicationSettings(){
-  if(!settingsDesktopRuntime())return;
   const control=$('settings-desktop-autostart');
   if(!control)return;
   control.disabled=true;
@@ -1096,13 +920,13 @@ setInterval(syncSettingsRuntime,500);
       if(tbody.querySelector('[data-notification-kind="'+kind+'"]'))return;
       const row=document.createElement('tr');
       row.dataset.notificationKind=kind;
-      row.innerHTML='<td>'+label+'</td><td><input id="notification-'+kind+'-in-app" type="checkbox"></td><td><input id="notification-'+kind+'-native" type="checkbox"></td><td><input id="notification-'+kind+'-telegram" type="checkbox"></td><td><select id="notification-'+kind+'-sound"><option value="0">Brak</option><option value="1">1 dzwonek</option><option value="2">2 dzwonki</option><option value="3">3 dzwonki</option></select></td>';
+      row.innerHTML='<td>'+label+'</td><td><input id="notification-'+kind+'-in-app" type="checkbox"></td><td><input id="notification-'+kind+'-native" type="checkbox"></td><td><select id="notification-'+kind+'-sound"><option value="0">Brak</option><option value="1">1 dzwonek</option><option value="2">2 dzwonki</option><option value="3">3 dzwonki</option></select></td>';
       const anchor=kind==='mheard_new_station'?tbody.querySelector('[data-notification-kind="mailbox"]'):critical;
       anchor?tbody.insertBefore(row,anchor):tbody.append(row);
     });
   }
   function notificationLines(){
-    const fields=[['in_app','in-app'],['native','native'],['telegram','telegram'],['sound','sound']];
+    const fields=[['in_app','in-app'],['native','native'],['sound','sound']];
     return rows.flatMap(([kind])=>fields.map(([fieldName,channel])=>`notification_${kind}_${fieldName}=${channel==='sound'?($('notification-'+kind+'-sound')?.value||0):notificationSetting(kind,channel,$('notification-'+kind+'-'+channel)?.checked||false)}`));
   }
   const oldSettingsConfigText=settingsConfigText;
@@ -1116,7 +940,7 @@ setInterval(syncSettingsRuntime,500);
     const values=new Map();
     text.split(/\r?\n/).forEach(raw=>{const line=raw.trim(),index=line.indexOf('=');if(index>0)values.set(line.slice(0,index),line.slice(index+1));});
     const legacy=field=>values.get('notification_tnc_'+field);
-    rows.forEach(([kind])=>['in_app','native','telegram','sound'].forEach(fieldName=>{
+    rows.forEach(([kind])=>['in_app','native','sound'].forEach(fieldName=>{
       const value=values.get('notification_'+kind+'_'+fieldName)??(kind==='mheard_new_station'?(fieldName==='sound'?'0':'false'):legacy(fieldName));
       if(value===undefined)return;
       if(fieldName==='sound')field('notification-'+kind+'-sound',value);else checked('notification-'+kind+'-'+(fieldName==='in_app'?'in-app':fieldName),value==='true');

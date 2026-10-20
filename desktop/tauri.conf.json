@@ -23,7 +23,7 @@
       "../ultimatepr-station-icon.ico",
       "../ultimatepr-station-icon.png"
     ],
-    "shortDescription": "Packet radio station",
+    "shortDescription": "UPR Terminal packet radio desktop",
     "category": "Utility",
     "windows": {
       "nsis": {

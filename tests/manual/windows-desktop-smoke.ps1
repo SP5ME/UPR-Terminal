@@ -38,6 +38,10 @@ $app = $null
 try {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=19222'
     $data = Join-Path $root ('target\desktop-smoke-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $data | Out-Null
+    # The legacy parser supplies a default TCP interface when no interface key
+    # exists. An explicit disabled fixture must never contact a local TNC.
+    Set-Content -LiteralPath (Join-Path $data 'station.conf') -Encoding utf8 -Value "language=en`nbeacon_enabled=false`ndigipeat_enabled=false`ninterface_TEST=127.0.0.1:1,0,0,false,Isolated test"
     $testArguments = '--config "{0}" --web-config "{1}"' -f (Join-Path $data 'station.conf'), (Join-Path $data 'web.conf')
     $app = Start-Process -FilePath (Join-Path $root $Exe) -WorkingDirectory $root -ArgumentList $testArguments -WindowStyle Hidden -PassThru
     $pages = $null

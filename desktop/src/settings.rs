@@ -218,7 +218,6 @@ pub struct Options {
     pub web_config: PathBuf,
     pub data: PathBuf,
     pub minimized: bool,
-    pub server_mode: bool,
 }
 impl Options {
     pub fn parse() -> Result<Option<Self>, String> {
@@ -229,7 +228,6 @@ impl Options {
         let mut config = None;
         let mut web_config = None;
         let mut minimized = false;
-        let mut server_mode = false;
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--config" => {
@@ -239,18 +237,9 @@ impl Options {
                     web_config = Some(PathBuf::from(args.next().ok_or("Missing web config path")?))
                 }
                 "--minimized" => minimized = true,
-                "--headless" => server_mode = true,
-                "--mode" => {
-                    let mode = args.next().ok_or("Missing mode")?;
-                    match mode.as_str() {
-                        "server" => server_mode = true,
-                        "desktop" => server_mode = false,
-                        _ => return Err("Mode must be desktop or server".into()),
-                    }
-                }
                 "--help" | "-h" => {
                     println!(
-                        "UPR Terminal\n--config PATH\n--web-config PATH\n--minimized\n--mode desktop|server (Linux; desktop is default)\n--headless (alias for --mode server)"
+                        "UPR Terminal\n--config PATH\n--web-config PATH\n--minimized"
                     );
                     return Ok(None);
                 }
@@ -273,7 +262,6 @@ impl Options {
             web_config,
             data,
             minimized,
-            server_mode,
         }))
     }
 }
@@ -287,6 +275,9 @@ mod tests {
     fn retired_startup_option_is_rejected_before_loading_user_data() {
         let error = Options::from_cli(["--demo".to_owned()]).err().unwrap();
         assert_eq!(error, "Unknown argument: --demo");
+        for option in ["--headless", "--mode"] {
+            assert_eq!(Options::from_cli([option.to_owned()]).err().unwrap(), format!("Unknown argument: {option}"));
+        }
     }
 
     fn temp_profile(name: &str) -> PathBuf {

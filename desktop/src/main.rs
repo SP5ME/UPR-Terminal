@@ -289,12 +289,10 @@ fn setup(app: &mut tauri::App, state: &Arc<Desktop>) -> Result<(), Box<dyn std::
     let (sender, receiver) = mpsc::sync_channel(64);
     let station = runtime::start(
         RuntimeOptions {
-            address: "127.0.0.1:0".into(),
             config: state.options.config.clone(),
             web_config: state.options.web_config.clone(),
             web_config_explicit: true,
-            desktop: true,
-            desktop_token: None,
+            token_override: None,
             install_signals: false,
         },
         Some(sender),
@@ -482,30 +480,7 @@ fn run(options: Options) -> Result<(), String> {
     }
     Ok(())
 }
-fn run_server_mode(options: &Options) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    {
-        let station = runtime::start(
-            RuntimeOptions {
-                address: "127.0.0.1:8080".into(),
-                config: options.config.clone(),
-                web_config: options.web_config.clone(),
-                web_config_explicit: true,
-                desktop: false,
-                desktop_token: None,
-                install_signals: true,
-            },
-            None,
-        )?;
-        eprintln!("UPR Station: http://{}", station.address);
-        return station.wait();
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = options;
-        Err("Tryb server jest dostępny tylko w wariancie Linux.".into())
-    }
-}
+
 fn main() {
     let options = match Options::parse() {
         Ok(Some(o)) => o,
@@ -515,13 +490,7 @@ fn main() {
             return;
         }
     };
-    if options.server_mode {
-        let log_path = options.data.join("server.log");
-        if let Err(e) = run_server_mode(&options) {
-            startup_error(Some(log_path), &e);
-        }
-        return;
-    }
+
     let log_path = options.data.join("desktop.log");
     if let Err(e) = run(options) {
         startup_error(Some(log_path), &e);

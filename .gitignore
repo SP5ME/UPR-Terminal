@@ -3,7 +3,6 @@
 !/.github/
 !/.gitattributes
 !/.gitignore
-!/.dockerignore
 !/README.md
 !/LICENSE
 !/TRADEMARKS.md
@@ -11,12 +10,7 @@
 !/SECURITY.md
 !/Cargo.toml
 !/Cargo.lock
-!/Dockerfile
-!/docker-compose.yml
 !/build-installer.ps1
-!/build-windows.cmd
-!/station-control.cmd
-!/station-control.ps1
 !/ultimatepr-logo.png
 !/ultimatepr-station-icon.ico
 !/ultimatepr-station-icon.png
