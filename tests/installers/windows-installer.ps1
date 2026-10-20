@@ -26,7 +26,8 @@ $sentinel=Join-Path $data 'station.conf'
 $sentinelHash=(Get-FileHash -LiteralPath $sentinel).Hash
 # Tauri bundles a patched copy, then restores the build output (tauri-bundler bundle.rs).
 # Compare against precisely that one documented NSIS marker replacement, not arbitrary differences.
-$expectedBytes=[IO.File]::ReadAllBytes((Join-Path $repo 'desktop\target\release\ultimatepr-station-desktop.exe'))
+$releaseDirectory=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $Installer))
+$expectedBytes=[IO.File]::ReadAllBytes((Join-Path $releaseDirectory 'ultimatepr-station-desktop.exe'))
 $marker='__TAURI_BUNDLE_TYPE_VAR_UNK'
 $markerIndex=[Text.Encoding]::Latin1.GetString($expectedBytes).IndexOf($marker,[StringComparison]::Ordinal)
 if($markerIndex -lt 0){throw 'Expected Tauri bundle marker is missing; review bundler compatibility'}

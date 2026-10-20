@@ -79,6 +79,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev patchelf
       # Official prebuilt CLI avoids rebuilding the release tool on every runner.
       - run: npm exec --yes --package=@tauri-apps/cli@2.11.5 -- tauri --version
+      - run: npm exec --yes --package=@tauri-apps/cli@2.11.5 -- tauri icon ../ultimatepr-station-icon.png --output icons
+        working-directory: desktop
       - run: cargo fetch --locked --manifest-path desktop/Cargo.toml
       - run: python scripts/desktop-licenses.py
       - run: python -c "from pathlib import Path; assert not Path('desktop/target/legal/MISSING-LICENSE-TEXTS.txt').exists()"
