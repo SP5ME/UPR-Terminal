@@ -97,6 +97,41 @@ pub fn set(enabled: bool, config: &Path, web: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "macos")]
+pub fn set(enabled: bool, config: &Path, web: &Path) -> Result<(), String> {
+    fn xml(value: &str) -> String {
+        value
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+
+    let path = std::path::PathBuf::from(std::env::var_os("HOME").ok_or("HOME is missing")?)
+        .join("Library/LaunchAgents/org.ultimatepr.station.plist");
+    if enabled {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let argument = |path: &Path| -> Result<String, String> {
+            Ok(xml(path.to_str().ok_or("Non-Unicode autostart path")?))
+        };
+        let text = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>org.ultimatepr.station</string>\n<key>ProgramArguments</key><array><string>{}</string><string>--minimized</string><string>--config</string><string>{}</string><string>--web-config</string><string>{}</string></array>\n<key>RunAtLoad</key><true/>\n</dict></plist>\n",
+            argument(&exe)?,
+            argument(config)?,
+            argument(web)?,
+        );
+        std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+        ultimatepr::storage::write_atomic(&path, text.as_bytes()).map_err(|e| e.to_string())
+    } else {
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
