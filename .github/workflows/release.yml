@@ -98,7 +98,7 @@ jobs:
         if: startsWith(matrix.platform, 'windows-')
         shell: pwsh
         run: |
-          $installer = Get-ChildItem desktop/target/release/bundle/nsis/*-setup.exe
+          $installer = Get-ChildItem desktop/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
           if (@($installer).Count -ne 1) { throw 'Expected one installer' }
           ./tests/installers/windows-installer.ps1 -Installer $installer.FullName
       - name: Collect platform installer
