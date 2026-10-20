@@ -1,4 +1,4 @@
-//! Shared station lifecycle. No GUI dependencies.
+//! Embedded Terminal engine lifecycle. No standalone server entrypoint.
 use crate::{http, station, storage, web_config};
 use std::{
     env, fs,
@@ -22,7 +22,6 @@ pub struct RuntimeOptions {
     pub web_config_explicit: bool,
     /// Optional bearer token override for embedded API callers and isolated tests.
     pub token_override: Option<String>,
-    pub install_signals: bool,
 }
 
 pub struct StationRuntime {
@@ -69,7 +68,6 @@ pub fn start(
         web_config: web_config_path,
         web_config_explicit,
         token_override,
-        install_signals,
     } = options;
     if let Some(parent) = web_config_path
         .parent()
@@ -122,24 +120,7 @@ pub fn start(
         station::Station::new_with_web_config(path.clone(), Some(station_web_path.clone()))?;
     let files_directory = station.files_directory();
     let stop = Arc::new(AtomicBool::new(false));
-    if install_signals {
-        #[cfg(windows)]
-        {
-            WINDOWS_STOP
-                .set(stop.clone())
-                .map_err(|_| "Signal handler already registered")?;
-            if unsafe {
-                windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(console_signal), 1)
-            } == 0
-            {
-                return Err("Cannot register console signal handler".into());
-            }
-        }
-        #[cfg(unix)]
-        for signal in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
-            signal_hook::flag::register(signal, stop.clone()).map_err(|e| e.to_string())?;
-        }
-    }
+
     let snapshot = Arc::new(RwLock::new(station.snapshot()));
     let (tx, rx) = mpsc::sync_channel::<http::Envelope>(8);
     let runtime_stop = stop.clone();
@@ -235,13 +216,4 @@ impl DataLock {
         }
         Ok(Self { _file: file })
     }
-}
-#[cfg(windows)]
-static WINDOWS_STOP: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
-#[cfg(windows)]
-unsafe extern "system" fn console_signal(_: u32) -> i32 {
-    if let Some(stop) = WINDOWS_STOP.get() {
-        stop.store(true, Ordering::Relaxed);
-    }
-    1
 }

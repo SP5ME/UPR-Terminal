@@ -36,7 +36,11 @@ public static class DesktopSmokeNative {
 $previousArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 $app = $null
 try {
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=19222'
+    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
+    $probe.Start()
+    $debugPort = $probe.LocalEndpoint.Port
+    $probe.Stop()
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort"
     $data = Join-Path $root ('target\desktop-smoke-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $data | Out-Null
     # The legacy parser supplies a default TCP interface when no interface key
@@ -49,10 +53,10 @@ try {
         Start-Sleep -Milliseconds 250
         $app.Refresh()
         if ($app.HasExited) { throw 'Desktop exited before ready.' }
-        try { $pages = Invoke-RestMethod http://127.0.0.1:19222/json/list -TimeoutSec 1 } catch { continue }
+        try { $pages = Invoke-RestMethod "http://127.0.0.1:$debugPort/json/list" -TimeoutSec 1 } catch { continue }
         if ($pages | Where-Object { $_.url -like 'http://127.0.0.1:*' }) { break }
     }
-    node tests/manual/desktop-smoke.mjs 19222
+    node tests/manual/desktop-smoke.mjs $debugPort
     if ($LASTEXITCODE -ne 0) { throw 'WebView smoke test failed.' }
     $app.Refresh()
     $window = [DesktopSmokeNative]::FindMain($app.Id)

@@ -33,7 +33,6 @@ async function evaluate(expression) {
 }
 try {
   await rpc('Runtime.enable');
-  await rpc('Page.navigate', {url:page.url});
   for (let i = 0; i < 40; i++) {
     if (await evaluate('document.readyState === "complete" && !!document.querySelector("#settings-desktop-autostart")')) break;
     await new Promise(r => setTimeout(r, 250));

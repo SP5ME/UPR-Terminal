@@ -12,14 +12,12 @@ name = "ultimatepr"
 
 [dependencies]
 sha2 = "0.10"
-ureq = { version = "3.1.4", default-features = false, features = ["rustls"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Devices_Communication", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_IO", "Win32_System_Console"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Devices_Communication", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_IO"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.189"
-signal-hook = "0.3.18"
 
 [profile.release]
 opt-level = "s"

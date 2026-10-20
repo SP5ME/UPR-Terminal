@@ -1,5 +1,5 @@
-//! Station-only configuration. Radio settings remain importable from Terminal,
-//! while HTTP/runtime settings live in a separate file owned by Station.
+//! Local engine preferences and compatibility reader for old Station profiles.
+//! Public bind and MQTT keys are preserved, but never activate server services.
 use std::{
     fs,
     net::SocketAddr,

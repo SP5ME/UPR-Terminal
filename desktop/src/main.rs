@@ -293,7 +293,7 @@ fn setup(app: &mut tauri::App, state: &Arc<Desktop>) -> Result<(), Box<dyn std::
             web_config: state.options.web_config.clone(),
             web_config_explicit: true,
             token_override: None,
-            install_signals: false,
+
         },
         Some(sender),
     )?;

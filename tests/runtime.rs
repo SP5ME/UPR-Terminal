@@ -77,7 +77,7 @@ fn desktop_runtime_is_authenticated_locked_and_releases_resources_on_stop() {
         web_config: dir.0.join("web.conf"),
         web_config_explicit: true,
         token_override: Some("a".repeat(64)),
-        install_signals: false,
+
     };
     let station = runtime::start(options.clone(), None).unwrap();
     assert_ne!(station.address.port(), 0);
@@ -120,7 +120,7 @@ fn desktop_runtime_reports_desktop_profile() {
         web_config: dir.0.join("web.conf"),
         web_config_explicit: true,
         token_override: Some("b".repeat(64)),
-        install_signals: false,
+
     };
     let station = runtime::start(options, None).unwrap();
     assert!(station.address.ip().is_loopback());
